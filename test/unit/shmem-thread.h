@@ -56,16 +56,18 @@ static inline int shmem_thread_is_registered() {
     return (thread_is_registered != 0);
 }
 
-static inline void shmem_thread_barrier() {
+static inline void shmem_thread_barrier(int expected) {
     int cnt;
 
     while (barrier_complete != 0) ;
 
-    cnt = barrier_cnt++;
+    cnt = ++barrier_cnt;
 
-    if (cnt == num_threads) barrier_complete = 1;
-    else if (cnt == 0) barrier_complete = 0;
-    else while (!barrier_complete);
+    if (cnt == expected) barrier_complete = 1;
+    else while (!barrier_complete) ;
+
+    cnt = --barrier_cnt;
+    if (cnt == 0) barrier_complete = 0;
 }
 
 static inline void shmem_thread_fence(void) {

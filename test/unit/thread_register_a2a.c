@@ -39,7 +39,7 @@
 
 #include "shmem-thread.h"
 
-#define T 1
+#define T 2
 
 int dest[T] = { 0 };
 int flag[T] = { 0 };
@@ -62,9 +62,9 @@ static void * thread_main(void *arg) {
         shmem_int_add(&dest[tid], val, (me + i) % npes);
 
     /* Ensure that fence does not overlap with communication calls */
-    shmem_thread_barrier();
+    shmem_thread_barrier(T);
     if (tid == 0) shmem_fence();
-    shmem_thread_barrier();
+    shmem_thread_barrier(T);
 
     for (i = 1; i <= npes; i++)
         shmem_int_inc(&flag[tid], (me + i) % npes);
@@ -87,18 +87,18 @@ static void * thread_main(void *arg) {
         ++errors;
     }
 
-    shmem_thread_barrier();
+    shmem_thread_barrier(T);
     if (0 == tid) shmem_barrier_all();
-    shmem_thread_barrier();
+    shmem_thread_barrier(T);
 
     /* TEST CONCURRENT PUTS */
     val = -1;
     shmem_int_put(&dest[tid], &val, 1, (me + 1) % npes);
 
     /* Ensure that all puts are issued before the shmem barrier is called. */
-    shmem_thread_barrier();
+    shmem_thread_barrier(T);
     if (0 == tid) shmem_barrier_all();
-    shmem_thread_barrier();
+    shmem_thread_barrier(T);
 
     /* TEST CONCURRENT GETS */
     for (i = 1; i <= npes; i++) {
@@ -112,7 +112,7 @@ static void * thread_main(void *arg) {
         }
     }
 
-    shmem_thread_barrier();
+    shmem_thread_barrier(T);
     shmem_thread_unregister();
 
     return NULL;
