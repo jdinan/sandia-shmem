@@ -20,13 +20,8 @@
 #include <stdio.h>
 #include <shmem.h>
 
-extern _Thread_local int             thread_is_registered;
 extern _Thread_local shmemx_domain_t thread_domain;
 extern _Thread_local shmemx_ctx_t    thread_ctx;
-
-extern _Atomic int num_threads;
-extern _Atomic int barrier_cnt;
-extern _Atomic int barrier_complete;
 
 static inline void shmem_thread_register(void) {
     int err;
@@ -39,35 +34,11 @@ static inline void shmem_thread_register(void) {
                 err, shmem_my_pe());
         shmem_global_exit(err);
     }
-
-    thread_is_registered = 1;
-    ++num_threads;
 }
 
 static inline void shmem_thread_unregister(void) {
     shmemx_ctx_destroy(thread_ctx);
     shmemx_domain_destroy(1, &thread_domain);
-
-    thread_is_registered = 0;
-    --num_threads;
-}
-
-static inline int shmem_thread_is_registered() {
-    return (thread_is_registered != 0);
-}
-
-static inline void shmem_thread_barrier(int expected) {
-    int cnt;
-
-    while (barrier_complete != 0) ;
-
-    cnt = ++barrier_cnt;
-
-    if (cnt == expected) barrier_complete = 1;
-    else while (!barrier_complete) ;
-
-    cnt = --barrier_cnt;
-    if (cnt == 0) barrier_complete = 0;
 }
 
 static inline void shmem_thread_fence(void) {

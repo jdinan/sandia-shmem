@@ -38,6 +38,7 @@
 #include <shmemx.h>
 
 #include "shmem-thread.h"
+#include "pthread_barrier.h"
 
 #define T 7
 
@@ -45,6 +46,7 @@ int dest[T] = { 0 };
 int flag[T] = { 0 };
 
 int me, npes;
+pthread_barrier_t fencebar;
 _Atomic int errors = 0;
 
 
@@ -84,9 +86,9 @@ static void * thread_main(void *arg) {
         ++errors;
     }
 
-    shmem_thread_barrier(T);
+    pthread_barrier_wait(&fencebar);
     if (0 == tid) shmem_barrier_all();
-    shmem_thread_barrier(T);
+    pthread_barrier_wait(&fencebar);
 
     /* TEST CONCURRENT PUTS */
     val = -1;
@@ -94,9 +96,9 @@ static void * thread_main(void *arg) {
 
     /* Ensure that all puts are issued before the shmem barrier is called. */
     shmem_thread_quiet();
-    shmem_thread_barrier(T);
+    pthread_barrier_wait(&fencebar);
     if (0 == tid) shmem_barrier_all();
-    shmem_thread_barrier(T);
+    pthread_barrier_wait(&fencebar);
 
     /* TEST CONCURRENT GETS */
     for (i = 1; i <= npes; i++) {
@@ -110,7 +112,7 @@ static void * thread_main(void *arg) {
         }
     }
 
-    shmem_thread_barrier(T);
+    pthread_barrier_wait(&fencebar);
     shmem_thread_unregister();
 
     return NULL;
@@ -134,6 +136,8 @@ int main(int argc, char **argv) {
     me = shmem_my_pe();
     npes = shmem_n_pes();
 
+    pthread_barrier_init(&fencebar, NULL, T);
+
     if (me == 0) printf("Starting multithreaded test on %d PEs, %d threads/PE\n", npes, T);
 
     for (i = 0; i < T; i++) {
@@ -148,6 +152,8 @@ int main(int argc, char **argv) {
         err = pthread_join(threads[i], NULL);
         assert(0 == err);
     }
+
+    pthread_barrier_destroy(&fencebar);
 
     if (me == 0) {
         if (errors) printf("Encountered %d errors\n", errors);
