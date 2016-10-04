@@ -16,5 +16,5 @@
 #include <shmemx.h>
 #include <shmem-thread.h>
 
-_Thread_local shmemx_ctx_t    thread_ctx;
-_Thread_local shmemx_domain_t thread_domain;
+_Thread_local shmemx_ctx_t    shmemx_thread_ctx;
+_Thread_local shmemx_domain_t shmemx_thread_domain;

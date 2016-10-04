@@ -56,14 +56,14 @@ static void * thread_main(void *arg) {
     int tid = * (int *) arg;
     int i, val, expected;
 
-    shmem_thread_register();
+    shmemx_thread_register();
 
     /* TEST CONCURRENT ATOMICS */
     val = me;
     for (i = 1; i <= npes; i++)
         shmem_int_add(&dest[tid], val, (me + i) % npes);
 
-    shmem_thread_fence();
+    shmemx_thread_fence();
 
     for (i = 1; i <= npes; i++)
         shmem_int_inc(&flag[tid], (me + i) % npes);
@@ -95,7 +95,7 @@ static void * thread_main(void *arg) {
     shmem_int_put(&dest[tid], &val, 1, (me + 1) % npes);
 
     /* Ensure that all puts are issued before the shmem barrier is called. */
-    shmem_thread_quiet();
+    shmemx_thread_quiet();
     pthread_barrier_wait(&fencebar);
     if (0 == tid) shmem_barrier_all();
     pthread_barrier_wait(&fencebar);
@@ -113,7 +113,7 @@ static void * thread_main(void *arg) {
     }
 
     pthread_barrier_wait(&fencebar);
-    shmem_thread_unregister();
+    shmemx_thread_unregister();
 
     return NULL;
 }
