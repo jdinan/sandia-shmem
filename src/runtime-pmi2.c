@@ -33,7 +33,7 @@
 #define PMI2_SUCCESS 0
 #endif
 
-#include "runtime.h"
+#include "shmem_internal.h"
 
 static int rank = -1;
 static int size = 0;
