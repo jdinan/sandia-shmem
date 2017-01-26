@@ -24,33 +24,47 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
 **
-**  This is a bandwidth centric test for get: back-to-back message rate
+**  This is a bandwidth centric test for put: back-to-back message rate
 **
-**  Features of Test: bi-direction bandwidth
+**  Features of Test: uni-directional bandwidth
 **
 **  -by default megabytes/second results
 **
 **NOTE: this test assumes correctness of reduction algorithm
 */
 
+#define ENABLE_OPENMP
+
 #include <bw_common.h>
 
 #define shmem_putmem(dest, source, nelems, pe) \
-        shmem_getmem_nbi(dest, source, nelems, pe)
+        shmem_putmem_nbi(dest, source, nelems, pe)
 
-#include <bi_dir.h>
+#include <uni_dir_ctx.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <pthread.h>
 
 int main(int argc, char *argv[])
 {
-  bi_dir_bw_main(argc,argv);
+  uni_dir_bw_main(argc, argv);
+
+  fflush(stderr);
+  fflush(stdout);
 
   shmem_finalize();
 
   return 0;
-}  /* end of main() */
+}
 
 void
-bi_dir_bw(int len, perf_metrics_t *metric_info)
+uni_dir_bw(int len, perf_metrics_t *metric_info)
 {
-    bi_bw(len, metric_info);
+    uni_bw_ctx(len, metric_info, !streaming_node(*metric_info));
 }
