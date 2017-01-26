@@ -409,10 +409,7 @@ static void shmem_transport_ofi_domain_free(shmem_transport_domain_t* dom)
     dom->free_lock(&dom);
 
     if (dom->id >= 0) {
-        SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
         shmem_transport_ofi_domains[dom->id] = NULL;
-        SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
-
         free(dom);
     }
 }
@@ -571,7 +568,9 @@ void shmem_transport_ctx_destroy(shmem_transport_ctx_t *ctx)
     --(dom->refcnt);
 
     if (dom->refcnt == 0) {
+        SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
         shmem_transport_ofi_domain_free(dom);
+        SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
     } else if (dom->refcnt < 0) {
         RAISE_ERROR_STR("Attempted to destroy invalid domain");
     } else {
@@ -1330,7 +1329,9 @@ int shmem_transport_fini(void)
       shmem_transport_domain_t* dom = shmem_transport_ofi_domains[i];
       if(dom) {
         dom->take_lock(&dom);
+        SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
         shmem_transport_ofi_domain_free(dom);
+        SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
 
         if (dom->refcnt >= 0 || shmem_transport_ofi_domains[i] != NULL)
             RAISE_ERROR_MSG("Unable to free domain %zu\n", i);
