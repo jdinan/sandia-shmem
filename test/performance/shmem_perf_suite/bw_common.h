@@ -398,8 +398,20 @@ void static inline calc_and_print_results(double total_t, int len,
     PE_set_used_adjustments(&nPEs, &stride, &start_pe, metric_info);
 
     if (total_t > 0 ) {
+
+#ifdef ENABLE_OPENMP
+        int nthreads;
+#pragma omp parallel
+#pragma omp master
+        {
+            nthreads = omp_get_num_threads();
+        }
+        bw = (len / 1e6 * metric_info.window_size * metric_info.trials *
+                (double)nthreads) / (total_t / 1e6);
+#else
         bw = (len / 1e6 * metric_info.window_size * metric_info.trials) /
                 (total_t / 1e6);
+#endif
     }
 
     /* 2x as many messages/bytes at once for bi-directional */
@@ -578,6 +590,9 @@ void static inline bw_data_free(perf_metrics_t *metric_info) {
 
     aligned_buffer_free(metric_info->src);
     aligned_buffer_free(metric_info->dest);
+
+    fflush(stdout);
+    fflush(stderr);
 }
 
 void static inline bi_dir_bw_main(int argc, char *argv[]) {

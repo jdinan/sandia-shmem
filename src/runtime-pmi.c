@@ -231,12 +231,15 @@ shmem_runtime_put(char *key, void *value, size_t valuelen)
 
     if (size == 1) {
         singleton_kvs_t *e = malloc(sizeof(singleton_kvs_t));
-        if (e == NULL) return 3;
+        if (e == NULL) {
+            return 3;
+        }
         strncpy(e->key, kvs_key, max_key_len);
         strncpy(e->val, kvs_value, max_val_len);
         HASH_ADD_STR(singleton_kvs, key, e);
     } else {
-        if (PMI_SUCCESS != PMI_KVS_Put(kvs_name, kvs_key, kvs_value)) {
+        int err = PMI_KVS_Put(kvs_name, kvs_key, kvs_value);
+        if (PMI_SUCCESS != err) {
             return 2;
         }
     }
