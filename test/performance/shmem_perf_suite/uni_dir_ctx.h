@@ -85,9 +85,8 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
                 for (j = 0; j < metric_info->window_size; j++) {
                     shmemx_ctx_putmem(dest_buffer, src_buffer, len, dest, ctx);
                 }
+                shmemx_ctx_quiet(ctx);
             }
-
-            shmemx_ctx_quiet(ctx);
         }
         end = perf_shmemx_wtime();
 
