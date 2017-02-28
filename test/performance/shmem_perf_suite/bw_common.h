@@ -17,11 +17,11 @@
 
 #define INC 2
 #define TRIALS 500
-#define WINDOW_SIZE 64
+#define WINDOW_SIZE 256
 #define WARMUP 50
 
 #define TRIALS_LARGE  100
-#define WINDOW_SIZE_LARGE 64
+#define WINDOW_SIZE_LARGE 256
 #define WARMUP_LARGE  10
 #define LARGE_MESSAGE_SIZE  8192
 

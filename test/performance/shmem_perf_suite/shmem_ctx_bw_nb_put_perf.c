@@ -58,15 +58,21 @@ void sig_handler(int signo) {
 
 void *kill_func(void *data) {
     int kill_seconds = *((int *)data);
-    int err = sleep(kill_seconds);
-    assert(err == 0);
+
+    double start_time_us = perf_shmemx_wtime();
+
+    while (perf_shmemx_wtime() - start_time_us < kill_seconds * 1000000.0) {
+        sleep(10);
+    }
+    // int err = sleep(kill_seconds);
+    // assert(err == 0);
     raise(SIGUSR1);
     return NULL;
 }
 
 int main(int argc, char *argv[])
 {
-    int kill_seconds = 1100;
+    int kill_seconds = 200;
     __sighandler_t serr = signal(SIGUSR1, sig_handler);
     assert(serr != SIG_ERR);
 
