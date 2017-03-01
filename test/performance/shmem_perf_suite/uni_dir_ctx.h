@@ -16,6 +16,9 @@ static pthread_barrier_t barrier;
 
 static void *helper(void *user_data) {
     thread_params *params = (thread_params *)user_data;
+    perf_metrics_t *metric_info = params->metric_info;
+    const int dest = partner_node(*metric_info);
+    const int len = params->len;
     if (params->tid == 0) {
         shmem_barrier_all();
     }
@@ -23,12 +26,12 @@ static void *helper(void *user_data) {
     int err = pthread_barrier_wait(&barrier);
     assert(err == 0 || PTHREAD_BARRIER_SERIAL_THREAD);
 
-    if (streaming_node) {
+    if (params->streaming_node) {
         double start, end;
         const int thread_id = params->tid;
         const shmemx_ctx_t ctx = params->ctx;
         char *src_buffer = params->src_buffer;
-        char *dest_buffer = params->dst_buffer;
+        char *dest_buffer = params->dest_buffer;
 
         int i;
 
@@ -42,6 +45,7 @@ static void *helper(void *user_data) {
                 start = perf_shmemx_wtime();
             }
 
+            int j;
             for (j = 0; j < metric_info->window_size; j++) {
                 shmemx_ctx_putmem(dest_buffer, src_buffer, len, dest, ctx);
             }
@@ -51,7 +55,7 @@ static void *helper(void *user_data) {
         end = perf_shmemx_wtime();
 
         if (params->tid == 0) {
-            calc_and_print_results(end - start, len, *(params->metric_info));
+            calc_and_print_results(end - start, len, *metric_info);
         }
     }
 
