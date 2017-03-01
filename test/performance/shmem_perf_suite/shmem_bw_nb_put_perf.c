@@ -46,30 +46,8 @@
 
 #include <uni_dir.h>
 
-void sig_handler(int signo) {
-    raise(SIGABRT);
-    assert(0); // should never reach here
-}
-
-void *kill_func(void *data) {
-    int kill_seconds = *((int *)data);
-    int err = sleep(kill_seconds);
-    assert(err == 0);
-    raise(SIGUSR1);
-    return NULL;
-}
-
 int main(int argc, char *argv[])
 {
-    int kill_seconds = 600;
-    __sighandler_t serr = signal(SIGUSR1, sig_handler);
-    assert(serr != SIG_ERR);
-
-    pthread_t thread;
-    const int perr = pthread_create(&thread, NULL, kill_func,
-            (void *)&kill_seconds);
-    assert(perr == 0);
-
   uni_dir_bw_main(argc, argv);
 
   shmem_finalize();

@@ -72,6 +72,7 @@ typedef struct perf_metrics {
     comm_style cstyle;
     bw_style bwstyle;
     int thread_safety;
+    int nthreads;
 } perf_metrics_t;
 
 long red_psync[_SHMEM_REDUCE_SYNC_SIZE];
@@ -93,6 +94,7 @@ void static data_init(perf_metrics_t * data) {
     data->cstyle = COMM_PAIRWISE;
     data->bwstyle = STYLE_RMA;
     data->thread_safety = SHMEMX_THREAD_SINGLE;
+    data->nthreads = 1;
 }
 
 static const char * dt_names [] = { "int", "long", "longlong" };
@@ -154,7 +156,7 @@ void static command_line_arg_check(int argc, char *argv[],
     extern char *optarg;
 
     /* check command line args */
-    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvt:")) != EOF) {
+    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvt:q:")) != EOF) {
         switch (ch) {
         case 's':
             metric_info->start_len = strtoul(optarg, (char **)NULL, 0);
@@ -218,6 +220,9 @@ void static command_line_arg_check(int argc, char *argv[],
                 fprintf(stderr, "Unexpected value for -t: \"%s\"\n", optarg);
                 exit(1);
             }
+            break;
+        case 'q':
+            metric_info->nthreads = atoi(optarg);
             break;
         default:
             error = true;
@@ -309,14 +314,8 @@ void static print_results_header(perf_metrics_t metric_info) {
             metric_info.max_len, metric_info.size_inc);
 
 #ifdef ENABLE_OPENMP
-    int nthreads;
-#pragma omp parallel
-#pragma omp master
-    {
-        nthreads = omp_get_num_threads();
-    }
     printf(", thread safety %s (%d threads)",
-            thread_safety_str(metric_info.thread_safety), nthreads);
+            thread_safety_str(metric_info.thread_safety), metric_info.nthreads);
 #endif
 
     printf("\n\nLength           %s           "\
@@ -400,14 +399,8 @@ void static inline calc_and_print_results(double total_t, int len,
     if (total_t > 0 ) {
 
 #ifdef ENABLE_OPENMP
-        int nthreads;
-#pragma omp parallel
-#pragma omp master
-        {
-            nthreads = omp_get_num_threads();
-        }
         bw = (len / 1e6 * metric_info.window_size * metric_info.trials *
-                (double)nthreads) / (total_t / 1e6);
+                (double)metric_info.nthreads) / (total_t / 1e6);
 #else
         bw = (len / 1e6 * metric_info.window_size * metric_info.trials) /
                 (total_t / 1e6);
