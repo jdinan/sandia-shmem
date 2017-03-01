@@ -6,6 +6,8 @@ typedef struct _thread_params {
     int len;
     perf_metrics_t *metric_info;
     int streaming_node;
+    shmemx_ctx_t ctx;
+    char *src_buffer, *dest_buffer;
 } thread_params;
 
 #define SHMEM_HANG_WORKAROUND
@@ -18,8 +20,40 @@ static void *helper(void *user_data) {
         shmem_barrier_all();
     }
 
-    const int err = pthread_barrier_wait(&barrier);
+    int err = pthread_barrier_wait(&barrier);
     assert(err == 0 || PTHREAD_BARRIER_SERIAL_THREAD);
+
+    if (streaming_node) {
+        double start, end;
+        const int thread_id = params->tid;
+        const shmemx_ctx_t ctx = params->ctx;
+        char *src_buffer = params->src_buffer;
+        char *dest_buffer = params->dst_buffer;
+
+        int i;
+
+        for (i = 0; i < metric_info->trials + metric_info->warmup; i++) {
+            if (i == metric_info->warmup) {
+                shmemx_ctx_quiet(ctx);
+
+                err = pthread_barrier_wait(&barrier);
+                assert(err == 0 || PTHREAD_BARRIER_SERIAL_THREAD);
+
+                start = perf_shmemx_wtime();
+            }
+
+            for (j = 0; j < metric_info->window_size; j++) {
+                shmemx_ctx_putmem(dest_buffer, src_buffer, len, dest, ctx);
+            }
+            shmemx_ctx_quiet(ctx);
+        }
+
+        end = perf_shmemx_wtime();
+
+        if (params->tid == 0) {
+            calc_and_print_results(end - start, len, *(params->metric_info));
+        }
+    }
 
     return NULL;
 }
@@ -88,6 +122,9 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
         params[i].len = len;
         params[i].metric_info = metric_info;
         params[i].streaming_node = streaming_node;
+        params[i].ctx = ctxs[i];
+        params[i].src_buffer = srcs[i];
+        params[i].dest_buffer = dests[i];
     }
 
     for (i = 1; i < metric_info->nthreads; i++) {
@@ -129,11 +166,11 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
 //         calc_and_print_results((end - start), len, *metric_info);
 //     }
 
-    shmem_barrier_all();
-
     for (i = 1; i < metric_info->nthreads; i++) {
         pthread_join(threads[i], NULL);
     }
+
+    shmem_barrier_all();
 
     for (i = 0; i < metric_info->nthreads; i++) {
         shmemx_ctx_destroy(ctxs[i]);
