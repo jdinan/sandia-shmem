@@ -16,12 +16,28 @@
 #ifndef SHMEM_ATOMIC_H
 #define SHMEM_ATOMIC_H
 
+#if HAVE_SCHED_H
+#include <sched.h>
+#define shmem_internal_yield() sched_yield()
+#else
+#define shmem_internal_yield()
+#endif
+
 /* Compiler Barriers and stuff */
 
 #if defined(__i386__) || defined(__x86_64__)
-# define SPINLOCK_BODY() do { __asm__ __volatile__ ("pause" ::: "memory"); } while (0)
+# define SPINLOCK_BODY()                                                \
+    do {                                                                \
+        __asm__ __volatile__ ("pause" ::: "memory");                    \
+        if (shmem_internal_yield_when_idle) shmem_internal_yield();     \
+    } while (0)
+
 #else
-# define SPINLOCK_BODY() do { __asm__ __volatile__ (::: "memory"); } while (0)
+# define SPINLOCK_BODY()                                                \
+    do {                                                                \
+        __asm__ __volatile__ (::: "memory");                            \
+        if (shmem_internal_yield_when_idle) shmem_internal_yield();     \
+    } while (0)
 #endif
 
 #define COMPILER_FENCE() do { __asm__ __volatile__ ("" ::: "memory"); } while (0)

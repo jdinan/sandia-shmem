@@ -57,6 +57,7 @@ int shmem_internal_global_exit_called = 0;
 int shmem_internal_thread_level;
 int shmem_internal_debug = 0;
 int shmem_internal_trap_on_abort = 0;
+int shmem_internal_yield_when_idle = 1;
 
 #ifdef ENABLE_THREADS
 shmem_internal_mutex_t shmem_internal_mutex_alloc;
@@ -165,6 +166,7 @@ shmem_internal_init(int tl_requested, int *tl_provided)
     heap_use_malloc = shmem_util_getenv_long("SYMMETRIC_HEAP_USE_MALLOC", 0, 0);
     shmem_internal_debug = (NULL != shmem_util_getenv_str("DEBUG")) ? 1 : 0;
     shmem_internal_trap_on_abort = (NULL != shmem_util_getenv_str("TRAP_ON_ABORT")) ? 1 : 0;
+    shmem_internal_yield_when_idle = (NULL != shmem_util_getenv_str("YIELD_WHEN_IDLE")) ? 1 : 0;
 
     /* huge page support only on Linux for now, default is to use 2MB large pages */
 #ifdef __linux__
@@ -353,6 +355,8 @@ shmem_internal_init(int tl_requested, int *tl_provided)
             printf("\tEnable debugging messages\n");
             printf("SMA_TRAP_ON_ABORT       %s\n", shmem_internal_trap_on_abort ? "On" : "Off");
             printf("\tGenerate trap if the program aborts or calls shmem_global_exit\n");
+            printf("SMA_YIELD_WHEN_IDLE     %s\n", shmem_internal_yield_when_idle ? "On" : "Off");
+            printf("\tAsk the operating system scheduler to yield when PE is idle\n");
 
             printf("\n");
 #ifdef USE_XPMEM

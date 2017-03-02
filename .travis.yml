@@ -11,6 +11,7 @@ env:
         - FI_LOG_LEVEL=warn
         - SHMEM_OFI_USE_PROVIDER=sockets
         - SMA_INFO=1
+        - SMA_YIELD_WHEN_IDLE=1
     matrix:
         - # Defaults
         - SOS_BUILD_OPTS="--disable-mr-scalable --enable-av-map --disable-cxx"
