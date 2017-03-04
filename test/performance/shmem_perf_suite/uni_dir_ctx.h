@@ -183,6 +183,8 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
     }
     shmemx_domain_destroy(metric_info->nthreads, domains);
 
+    pthread_barrier_destroy(&barrier);
+
     free(ctxs);
     free(srcs);
     free(dests);
