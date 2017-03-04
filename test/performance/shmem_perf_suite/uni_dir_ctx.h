@@ -65,10 +65,6 @@ static void *helper(void *user_data) {
 void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
         int streaming_node)
 {
-
-#ifdef SHMEM_HANG_WORKAROUND
-#endif
-
     double start = 0.0, end = 0.0;
     int i = 0, j = 0;
     int dest = partner_node(*metric_info);
@@ -79,7 +75,8 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
     shmemx_ctx_t *ctxs = (shmemx_ctx_t *)malloc(
             metric_info->nthreads * sizeof(shmemx_ctx_t));
     assert(domains && ctxs);
-    shmemx_domain_create(metric_info->thread_safety, metric_info->nthreads, domains);
+    shmemx_domain_create(metric_info->thread_safety, metric_info->nthreads,
+            domains);
 
     char **srcs = (char **)malloc(metric_info->nthreads * sizeof(char *));
     char **dests = (char **)malloc(metric_info->nthreads * sizeof(char *));
@@ -95,6 +92,7 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
     int err = pthread_barrier_init(&barrier, NULL, metric_info->nthreads);
     assert(err == 0);
 
+#ifdef SHMEM_HANG_WORKAROUND
     int *buf = (int *)shmem_malloc(metric_info->num_pes * sizeof(int));
     assert(buf);
     buf[metric_info->my_node] = metric_info->my_node;
@@ -113,66 +111,80 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
     for (int i = 0; i < metric_info->num_pes; i++) {
         assert(buf[i] == i);
     }
+    shmem_free(buf);
+#endif
 
-    pthread_t *threads = (pthread_t *)malloc(
-            metric_info->nthreads * sizeof(pthread_t));
-    assert(threads);
-    thread_params *params = (thread_params *)malloc(
-            metric_info->nthreads * sizeof(thread_params));
-    assert(params);
+//     pthread_t *threads = (pthread_t *)malloc(
+//             metric_info->nthreads * sizeof(pthread_t));
+//     assert(threads);
+//     thread_params *params = (thread_params *)malloc(
+//             metric_info->nthreads * sizeof(thread_params));
+//     assert(params);
+// 
+//     for (i = 0; i < metric_info->nthreads; i++) {
+//         params[i].tid = i;
+//         params[i].len = len;
+//         params[i].metric_info = metric_info;
+//         params[i].streaming_node = streaming_node;
+//         params[i].ctx = ctxs[i];
+//         params[i].src_buffer = srcs[i];
+//         params[i].dest_buffer = dests[i];
+//     }
+// 
+//     for (i = 1; i < metric_info->nthreads; i++) {
+//         pthread_create(&threads[i], NULL, helper, params + i);
+//     }
+//     helper(params + 0);
 
-    for (i = 0; i < metric_info->nthreads; i++) {
-        params[i].tid = i;
-        params[i].len = len;
-        params[i].metric_info = metric_info;
-        params[i].streaming_node = streaming_node;
-        params[i].ctx = ctxs[i];
-        params[i].src_buffer = srcs[i];
-        params[i].dest_buffer = dests[i];
-    }
+    shmem_barrier_all();
 
-    for (i = 1; i < metric_info->nthreads; i++) {
-        pthread_create(&threads[i], NULL, helper, params + i);
-    }
-    helper(params + 0);
+    fprintf(stderr, "PE %d before parallel region is on %lu\n", shmem_my_pe(), pthread_self());
 
-//     shmem_barrier_all();
-// 
-//     if (streaming_node) {
-// 
-// #pragma omp parallel default(none) firstprivate(ctxs, metric_info, len, dest, \
-//         srcs, dests) private(j) shared(start)
-//         {
-//             int i;
-//             const int thread_id = omp_get_thread_num();
-//             const shmemx_ctx_t ctx = ctxs[thread_id];
-//             char *src_buffer = srcs[thread_id];
-//             char *dest_buffer = dests[thread_id];
-// 
-//             for (i = 0; i < metric_info->trials + metric_info->warmup; i++) {
-//                 if (i == metric_info->warmup) {
-//                     shmemx_ctx_quiet(ctx);
-// 
-// #pragma omp barrier // Keep threads in sync
-//                     if (thread_id == 0) {
-//                         start = perf_shmemx_wtime();
-//                     }
-//                 }
+    if (streaming_node) {
+
+#pragma omp parallel default(none) firstprivate(ctxs, metric_info, len, dest, \
+        srcs, dests) private(j) shared(start) num_threads(metric_info->nthreads)
+        {
+            int i;
+            const int thread_id = omp_get_thread_num();
+            const shmemx_ctx_t ctx = ctxs[thread_id];
+            char *src_buffer = srcs[thread_id];
+            char *dest_buffer = dests[thread_id];
+
+            for (i = 0; i < metric_info->trials + metric_info->warmup; i++) {
+                if (i == metric_info->warmup) {
+                    shmemx_ctx_quiet(ctx);
+
+                    // Keep PEs somewhat in sync
+#pragma omp master
+                    {
+                        shmem_barrier_all();
+                    }
+
+#pragma omp barrier // Keep threads in sync
+
+#pragma omp master
+                    {
+                        start = perf_shmemx_wtime();
+                    }
+                }
 // 
 //                 for (j = 0; j < metric_info->window_size; j++) {
 //                     shmemx_ctx_putmem(dest_buffer, src_buffer, len, dest, ctx);
 //                 }
 //                 shmemx_ctx_quiet(ctx);
-//             }
-//         }
-//         end = perf_shmemx_wtime();
-// 
-//         calc_and_print_results((end - start), len, *metric_info);
-//     }
+            }
+        }
+        end = perf_shmemx_wtime();
 
-    for (i = 1; i < metric_info->nthreads; i++) {
-        pthread_join(threads[i], NULL);
+        calc_and_print_results((end - start), len, *metric_info);
     }
+
+    fprintf(stderr, "PE %d after parallel region is on %lu\n", shmem_my_pe(), pthread_self());
+
+//     for (i = 1; i < metric_info->nthreads; i++) {
+//         pthread_join(threads[i], NULL);
+//     }
 
     shmem_barrier_all();
 
@@ -183,12 +195,12 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
     }
     shmemx_domain_destroy(metric_info->nthreads, domains);
 
-    pthread_barrier_destroy(&barrier);
+    // pthread_barrier_destroy(&barrier);
 
     free(ctxs);
     free(srcs);
     free(dests);
     free(domains);
-    free(threads);
-    free(params);
+    // free(threads);
+    // free(params);
 }
