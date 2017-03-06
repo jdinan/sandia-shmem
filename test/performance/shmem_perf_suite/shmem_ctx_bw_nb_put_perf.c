@@ -74,7 +74,7 @@ void *kill_func(void *data) {
 int main(int argc, char *argv[])
 {
 
-    int kill_seconds = 300;
+    int kill_seconds = 550;
     __sighandler_t serr = signal(SIGUSR1, sig_handler);
     assert(serr != SIG_ERR);
 
