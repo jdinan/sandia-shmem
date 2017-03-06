@@ -46,15 +46,16 @@ check_PROGRAMS += \
 
 if ENABLE_OPENMP
 check_PROGRAMS += \
-	shmem_bw_put_ctx_lockless
+	shmem_bw_put_ctx_lockless \
+	shmem_ctx_bw_nb_put_perf
 endif
 endif
 
 NPROCS ?= 2
 LOG_COMPILER = $(TEST_RUNNER)
 
-AM_CPPFLAGS = -I$(top_builddir)/mpp
-AM_LDFLAGS = $(LIBTOOL_WRAPPER_LDFLAGS)
+AM_CPPFLAGS = -I$(top_builddir)/mpp -fopenmp
+AM_LDFLAGS = $(LIBTOOL_WRAPPER_LDFLAGS) -fopenmp
 LDADD = $(top_builddir)/src/libsma.la
 
 shmem_latency_put_perf_SOURCES = shmem_latency_put_perf.c latency_common.h common.h round_t_latency.h int_element_latency.h
@@ -87,3 +88,5 @@ shmem_bibw_nb_get_perf_SOURCES = shmem_bibw_nb_get_perf.c bw_common.h common.h b
 shmem_bw_atomics_perf_SOURCES = shmem_bw_atomics_perf.c bw_common.h common.h
 
 shmem_bibw_atomics_perf_SOURCES = shmem_bibw_atomics_perf.c bw_common.h common.h
+
+shmem_ctx_bw_nb_put_perf_SOURCES = shmem_ctx_bw_nb_put_perf.c bw_common.h common.h
