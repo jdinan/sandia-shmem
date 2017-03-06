@@ -26,7 +26,8 @@
 **
 **  This is a bandwidth centric test for put: back-to-back message rate
 **
-**  Features of Test: uni-directional bandwidth
+**  Features of Test: uni-directional bandwidth using contexts driven by
+**  multiple threads.
 **
 **  -by default megabytes/second results
 **
@@ -41,52 +42,10 @@
         shmem_putmem_nbi(dest, source, nelems, pe)
 
 #include <uni_dir_ctx.h>
-#include <signal.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-
-#include <fcntl.h>
-#include <unistd.h>
-#include <errno.h>
-#include <pthread.h>
-
-
-void sig_handler(int signo) {
-    raise(SIGABRT);
-    assert(0); // should never reach here
-}
-
-void *kill_func(void *data) {
-    int kill_seconds = *((int *)data);
-
-    double start_time_us = perf_shmemx_wtime();
-
-    while (perf_shmemx_wtime() - start_time_us < kill_seconds * 1000000.0) {
-        sleep(10);
-    }
-    // int err = sleep(kill_seconds);
-    // assert(err == 0);
-    raise(SIGUSR1);
-    return NULL;
-}
 
 int main(int argc, char *argv[])
 {
-
-    int kill_seconds = 550;
-    __sighandler_t serr = signal(SIGUSR1, sig_handler);
-    assert(serr != SIG_ERR);
-
-    pthread_t thread;
-    const int perr = pthread_create(&thread, NULL, kill_func,
-            (void *)&kill_seconds);
-    assert(perr == 0);
-
     uni_dir_bw_main(argc, argv);
-
-  fflush(stderr);
-  fflush(stdout);
 
   shmem_finalize();
 
