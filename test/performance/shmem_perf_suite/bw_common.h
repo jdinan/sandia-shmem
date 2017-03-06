@@ -584,9 +584,6 @@ void static inline bw_data_free(perf_metrics_t *metric_info) {
 
     aligned_buffer_free(metric_info->src);
     aligned_buffer_free(metric_info->dest);
-
-    fflush(stdout);
-    fflush(stderr);
 }
 
 void static inline bi_dir_bw_main(int argc, char *argv[]) {
