@@ -156,7 +156,7 @@ void static command_line_arg_check(int argc, char *argv[],
     extern char *optarg;
 
     /* check command line args */
-    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvt:q:")) != EOF) {
+    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvc:t:")) != EOF) {
         switch (ch) {
         case 's':
             metric_info->start_len = strtoul(optarg, (char **)NULL, 0);
@@ -207,7 +207,7 @@ void static command_line_arg_check(int argc, char *argv[],
         case 'w':
             metric_info->window_size = strtoul(optarg, (char **)NULL, 0);
             break;
-        case 't':
+        case 'c':
             if (strcmp(optarg, "SINGLE") == 0) {
                 metric_info->thread_safety = SHMEMX_THREAD_SINGLE;
             } else if (strcmp(optarg, "FUNNELED") == 0) {
@@ -221,7 +221,7 @@ void static command_line_arg_check(int argc, char *argv[],
                 exit(1);
             }
             break;
-        case 'q':
+        case 't':
             metric_info->nthreads = atoi(optarg);
             break;
         default:
@@ -239,7 +239,8 @@ void static command_line_arg_check(int argc, char *argv[],
                     "[-w window size - iterations between completion] \n"\
                     "[-k (kilobytes/second)] [-b (bytes/second)] \n"\
                     "[-v (validate data stream)] \n"\
-                    "[-t thread-safety-level] \n");
+                    "[-c thread-safety-config] \n"\
+                    "[-t num-threads] \n");
         }
 #ifndef VERSION_1_0
         shmem_finalize();
