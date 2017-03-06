@@ -217,8 +217,8 @@ void static command_line_arg_check(int argc, char *argv[],
             } else if (strcmp(optarg, "MULTIPLE") == 0) {
                 metric_info->thread_safety = SHMEMX_THREAD_MULTIPLE;
             } else {
-                fprintf(stderr, "Unexpected value for -t: \"%s\"\n", optarg);
-                exit(1);
+                fprintf(stderr, "Unexpected value for -c: \"%s\"\n", optarg);
+                error = true;
             }
             break;
         case 't':
