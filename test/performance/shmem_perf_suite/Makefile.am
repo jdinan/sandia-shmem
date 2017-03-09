@@ -54,8 +54,12 @@ endif
 NPROCS ?= 2
 LOG_COMPILER = $(TEST_RUNNER)
 
-AM_CPPFLAGS = -I$(top_builddir)/mpp -fopenmp
-AM_LDFLAGS = $(LIBTOOL_WRAPPER_LDFLAGS) -fopenmp
+AM_CPPFLAGS = -I$(top_builddir)/mpp
+AM_LDFLAGS = $(LIBTOOL_WRAPPER_LDFLAGS)
+if ENABLE_OPENMP
+AM_CPPFLAGS += -fopenmp
+AM_LDFLAGS += -fopenmp
+endif
 LDADD = $(top_builddir)/src/libsma.la
 
 shmem_latency_put_perf_SOURCES = shmem_latency_put_perf.c latency_common.h common.h round_t_latency.h int_element_latency.h

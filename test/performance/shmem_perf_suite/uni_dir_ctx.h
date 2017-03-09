@@ -43,8 +43,6 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
 
             for (i = 0; i < metric_info->trials + metric_info->warmup; i++) {
                 if (i == metric_info->warmup) {
-                    shmemx_ctx_quiet(ctx);
-
 #pragma omp barrier // Keep threads in sync
 
 #pragma omp master

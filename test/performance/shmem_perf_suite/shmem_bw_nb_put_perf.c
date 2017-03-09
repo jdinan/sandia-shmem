@@ -35,12 +35,6 @@
 
 #include <bw_common.h>
 
-#include <pthread.h>
-#include <signal.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-
 #define shmem_putmem(dest, source, nelems, pe) \
         shmem_putmem_nbi(dest, source, nelems, pe)
 
