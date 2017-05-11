@@ -25,7 +25,8 @@ check_PROGRAMS = \
 
 if ENABLE_OPENMP
 check_PROGRAMS += \
-	shmem_bw_put_ctx_lockless
+	shmem_bw_put_ctx_lockless \
+	shmem_ctx_bw_nb_put_perf
 endif
 
 noinst_HEADERS = \
@@ -46,6 +47,10 @@ LOG_COMPILER = $(TEST_RUNNER)
 
 AM_CPPFLAGS = -I$(top_builddir)/mpp
 AM_LDFLAGS = $(LIBTOOL_WRAPPER_LDFLAGS)
+if ENABLE_OPENMP
+AM_CPPFLAGS += -fopenmp
+AM_LDFLAGS += -fopenmp
+endif
 LDADD = $(top_builddir)/src/libsma.la
 
 if USE_PMI_SIMPLE

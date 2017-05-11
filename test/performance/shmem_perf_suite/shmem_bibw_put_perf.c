@@ -41,8 +41,6 @@
 
 int main(int argc, char *argv[])
 {
-  shmem_init();
-
   bi_dir_bw_main(argc, argv);
 
   shmem_finalize();

@@ -192,5 +192,7 @@ int main(int argc, char *argv[])
 {
     bi_dir_bw_main(argc, argv);
 
+    shmem_finalize();
+
     return 0;
 }

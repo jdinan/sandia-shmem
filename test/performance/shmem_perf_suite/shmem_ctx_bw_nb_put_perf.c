@@ -1,12 +1,12 @@
 /*
- *  Copyright (c) 2017 Intel Corporation. All rights reserved.
+ *  Copyright (c) 2015 Intel Corporation. All rights reserved.
  *  This software is available to you under the BSD license below:
  *
- *      Redistribution and use in source and binary forms, with or
- *      without modification, are permitted provided that the following
- *      conditions are met:
+ * *	Redistribution and use in source and binary forms, with or
+ *	without modification, are permitted provided that the following
+ *	conditions are met:
  *
- *      - Redistributions of source code must retain the above
+ *	- Redistributions of source code must retain the above
  *        copyright notice, this list of conditions and the following
  *        disclaimer.
  *
@@ -23,40 +23,37 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- */
-
-/*
 **
-**  This is a bandwidth centric test for get: back-to-back message rate
+**  This is a bandwidth centric test for put: back-to-back message rate
 **
-**  Features of Test: uni-directional bandwidth
+**  Features of Test: uni-directional bandwidth using contexts driven by
+**  multiple threads.
 **
 **  -by default megabytes/second results
 **
 **NOTE: this test assumes correctness of reduction algorithm
 */
 
+#define ENABLE_OPENMP
+
 #include <bw_common.h>
 
 #define shmem_putmem(dest, source, nelems, pe) \
-        shmem_getmem(dest, source, nelems, pe)
+        shmem_putmem_nbi(dest, source, nelems, pe)
 
-/* NO-OP */
-#define shmem_quiet();
-
-#include <uni_dir.h>
+#include <uni_dir_ctx.h>
 
 int main(int argc, char *argv[])
 {
-  uni_dir_bw_main(argc,argv);
+    uni_dir_bw_main(argc, argv);
 
   shmem_finalize();
 
   return 0;
-}  /* end of main() */
+}
 
 void
 uni_dir_bw(int len, perf_metrics_t *metric_info)
 {
-    uni_bw(len, metric_info, streaming_node(*metric_info));
+    uni_bw_ctx(len, metric_info, !streaming_node(*metric_info));
 }

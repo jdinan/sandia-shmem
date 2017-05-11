@@ -25,7 +25,11 @@
  * SOFTWARE.
  */
 
+#include <shmemx.h>
 #include <common.h>
+#ifdef ENABLE_OPENMP
+#include <omp.h>
+#endif
 
 #define MAX_MSG_SIZE (1<<23)
 #define START_LEN 1
@@ -86,6 +90,8 @@ typedef struct perf_metrics {
     bw_type type;
     comm_style cstyle;
     bw_style bwstyle;
+    int thread_safety;
+    int nthreads;
 } perf_metrics_t;
 
 long red_psync[SHMEM_REDUCE_SYNC_SIZE];
@@ -100,12 +106,14 @@ void static data_init(perf_metrics_t * data) {
     data->warmup = WARMUP; /*number of initial iterations to skip*/
     data->unit = MB;
     data->validate = false;
-    data->my_node = shmem_my_pe();
-    data->num_pes = shmem_n_pes();
+    data->my_node = -1;
+    data->num_pes = -1;
     data->src = NULL;
     data->dest = NULL;
     data->cstyle = COMM_PAIRWISE;
     data->bwstyle = STYLE_RMA;
+    data->thread_safety = SHMEMX_THREAD_SINGLE;
+    data->nthreads = 1;
 }
 
 static const char * dt_names [] = { "int", "long", "longlong" };
@@ -170,25 +178,44 @@ void static command_line_arg_check(int argc, char *argv[],
     extern char *optarg;
 
     /* check command line args */
-    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbv")) != EOF) {
+    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvc:t:")) != EOF) {
         switch (ch) {
         case 's':
             metric_info->start_len = strtoul(optarg, (char **)NULL, 0);
             if ( metric_info->start_len < 1 ) metric_info->start_len = 1;
-            if(!is_pow_of_2(metric_info->start_len)) error = true;
+            if(!is_pow_of_2(metric_info->start_len)) {
+                fprintf(stderr, "Error: start_length must be a power of two\n");
+                error = true;
+            }
             break;
         case 'e':
             metric_info->max_len = strtoul(optarg, (char **)NULL, 0);
-            if(!is_pow_of_2(metric_info->max_len)) error = true;
-            if(metric_info->max_len < metric_info->start_len) error = true;
+            if(!is_pow_of_2(metric_info->max_len)) {
+                fprintf(stderr, "Error: end_length must be a power of two\n");
+                error = true;
+            }
+            if(metric_info->max_len < metric_info->start_len) {
+                fprintf(stderr, "Error: end_length (%ld) must be >= "
+                        "start_length (%ld)\n", metric_info->max_len,
+                        metric_info->start_len);
+                error = true;
+            }
             break;
         case 'n':
             metric_info->trials = strtoul(optarg, (char **)NULL, 0);
-            if(metric_info->trials < (metric_info->warmup*2)) error = true;
+            if(metric_info->trials < (metric_info->warmup*2)) {
+                fprintf(stderr, "Error: trials (%ld) must be >= 2*warmup "
+                        "(%ld)\n", metric_info->trials, metric_info->warmup*2);
+                error = true;
+            }
             break;
         case 'p':
             metric_info->warmup = strtoul(optarg, (char **)NULL, 0);
-            if(metric_info->warmup > (metric_info->trials/2)) error = true;
+            if(metric_info->warmup > (metric_info->trials/2)) {
+                fprintf(stderr, "Error: warmup (%ld) must be <= trials/2 "
+                        "(%ld)\n", metric_info->warmup, metric_info->trials/2);
+                error = true;
+            }
             break;
         case 'k':
             metric_info->unit = KB;
@@ -201,6 +228,23 @@ void static command_line_arg_check(int argc, char *argv[],
             break;
         case 'w':
             metric_info->window_size = strtoul(optarg, (char **)NULL, 0);
+            break;
+        case 'c':
+            if (strcmp(optarg, "SINGLE") == 0) {
+                metric_info->thread_safety = SHMEMX_THREAD_SINGLE;
+            } else if (strcmp(optarg, "FUNNELED") == 0) {
+                metric_info->thread_safety = SHMEMX_THREAD_FUNNELED;
+            } else if (strcmp(optarg, "SERIALIZED") == 0) {
+                metric_info->thread_safety = SHMEMX_THREAD_SERIALIZED;
+            } else if (strcmp(optarg, "MULTIPLE") == 0) {
+                metric_info->thread_safety = SHMEMX_THREAD_MULTIPLE;
+            } else {
+                fprintf(stderr, "Unexpected value for -c: \"%s\"\n", optarg);
+                error = true;
+            }
+            break;
+        case 't':
+            metric_info->nthreads = atoi(optarg);
             break;
         default:
             error = true;
@@ -216,7 +260,9 @@ void static command_line_arg_check(int argc, char *argv[],
                     "[-p warm-up (see trials for value restriction)] \n"\
                     "[-w window size - iterations between completion] \n"\
                     "[-k (kilobytes/second)] [-b (bytes/second)] \n"\
-                    "[-v (validate data stream)] \n");
+                    "[-v (validate data stream)] \n"\
+                    "[-c thread-safety-config] \n"\
+                    "[-t num-threads] \n");
         }
 #ifndef VERSION_1_0
         shmem_finalize();
@@ -240,6 +286,21 @@ void static inline only_even_PEs_check(int my_node, int num_pes) {
 /**************************************************************/
 /*                   Result Printing and Calc                 */
 /**************************************************************/
+
+static const char *thread_safety_str(const int thread_safety) {
+    if (thread_safety == SHMEMX_THREAD_SINGLE) {
+        return "SINGLE";
+    } else if (thread_safety == SHMEMX_THREAD_FUNNELED) {
+        return "FUNNELED";
+    } else if (thread_safety == SHMEMX_THREAD_SERIALIZED) {
+        return "SERIALIZED";
+    } else if (thread_safety == SHMEMX_THREAD_MULTIPLE) {
+        return "MULTIPLE";
+    } else {
+        fprintf(stderr, "Unexpected thread safety value: %d\n", thread_safety);
+        exit(1);
+    }
+}
 
 void static print_atomic_results_header(perf_metrics_t metric_info) {
     printf("\nResults for %d PEs %lu trials with window size %lu ",
@@ -271,11 +332,16 @@ void static print_atomic_results_header(perf_metrics_t metric_info) {
 
 void static print_results_header(perf_metrics_t metric_info) {
     printf("\nResults for %d PEs %lu trials with window size %lu "\
-            "max message size %lu with multiple of %lu increments\n",
+            "max message size %lu with multiple of %lu increments",
             metric_info.num_pes, metric_info.trials, metric_info.window_size,
             metric_info.max_len, metric_info.size_inc);
 
-    printf("\nLength           %s           "\
+#ifdef ENABLE_OPENMP
+    printf(", thread safety %s (%d threads)",
+            thread_safety_str(metric_info.thread_safety), metric_info.nthreads);
+#endif
+
+    printf("\n\nLength           %s           "\
             "Message Rate\n", metric_info.bw_type);
 
     printf("in bytes         ");
@@ -354,8 +420,14 @@ void static inline calc_and_print_results(double total_t, int len,
     PE_set_used_adjustments(&nPEs, &stride, &start_pe, metric_info);
 
     if (total_t > 0 ) {
+
+#ifdef ENABLE_OPENMP
+        bw = (len / 1e6 * metric_info.window_size * metric_info.trials *
+                (double)metric_info.nthreads) / (total_t / 1e6);
+#else
         bw = (len / 1e6 * metric_info.window_size * metric_info.trials) /
                 (total_t / 1e6);
+#endif
     }
 
     /* 2x as many messages/bytes at once for bi-directional */
@@ -486,19 +558,25 @@ void static inline bw_init_data_stream(perf_metrics_t *metric_info,
 
     int i = 0;
 
-    /*must be before data_init*/
-#ifndef VERSION_1_0
-    shmem_init();
-#else
-    start_pes(0);
-#endif
-
     data_init(metric_info);
 
     for(i = 0; i < SHMEM_REDUCE_MIN_WRKDATA_SIZE; i++)
         red_psync[i] = SHMEM_SYNC_VALUE;
 
     command_line_arg_check(argc, argv, metric_info);
+
+    int tl;
+    shmemx_init_thread(metric_info->thread_safety, &tl);
+    if(tl != metric_info->thread_safety) {
+        fprintf(stderr,"Could not initialize with requested thread "
+                "level %d: got %d\n", metric_info->thread_safety, tl);
+        exit(-1);
+    }
+
+    metric_info->my_node = shmem_my_pe();
+    metric_info->num_pes = shmem_n_pes();
+
+    only_even_PEs_check(metric_info->my_node, metric_info->num_pes);
 
     metric_info->src = aligned_buffer_alloc(metric_info->max_len);
     init_array(metric_info->src, metric_info->max_len, metric_info->my_node);
@@ -533,10 +611,6 @@ void static inline bw_data_free(perf_metrics_t *metric_info) {
 
     aligned_buffer_free(metric_info->src);
     aligned_buffer_free(metric_info->dest);
-
-#ifndef VERSION_1_0
-    shmem_finalize();
-#endif
 }
 
 void static inline bi_dir_bw_main(int argc, char *argv[]) {
