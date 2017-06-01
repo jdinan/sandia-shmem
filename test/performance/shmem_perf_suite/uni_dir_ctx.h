@@ -1,8 +1,6 @@
 #include <time.h>
 #include <pthread.h>
 
-#define SHMEM_HANG_WORKAROUND
-
 void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
         int streaming_node)
 {
@@ -29,31 +27,6 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
         dests[i] = aligned_buffer_alloc(len);
         assert(srcs[i] && dests[i]);
     }
-
-#ifdef SHMEM_HANG_WORKAROUND
-    int *buf = (int *)shmem_malloc(metric_info->num_pes * sizeof(int));
-    assert(buf);
-    buf[metric_info->my_node] = metric_info->my_node;
-
-    for (i = 0; i < metric_info->num_pes; i++) {
-        if (i == metric_info->my_node) continue;
-
-        int j;
-        for (j = 0; j < metric_info->nthreads; j++) {
-            shmemx_ctx_putmem(buf + metric_info->my_node,
-                    buf + metric_info->my_node, sizeof(int), i, ctxs[j]);
-        }
-    }
-    for (j = 0; j < metric_info->nthreads; j++) {
-        shmemx_ctx_quiet(ctxs[j]);
-    }
-    shmem_barrier_all();
-
-    for (int i = 0; i < metric_info->num_pes; i++) {
-        assert(buf[i] == i);
-    }
-    shmem_free(buf);
-#endif
 
     shmem_barrier_all();
 
