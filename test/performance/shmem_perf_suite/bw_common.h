@@ -256,7 +256,8 @@ void static command_line_arg_check(int argc, char *argv[],
                     "[-w window size - iterations between completion] \n"\
                     "[-k (kilobytes/second)] [-b (bytes/second)] \n"\
                     "[-v (validate data stream)] \n"\
-                    "[-c thread-safety-config] \n"\
+                    "[-c runtime-thread-safety-config] \n"\
+                    "[-d domain-thread-safety-config] \n"\
                     "[-t num-threads] \n");
         }
 #ifndef VERSION_1_0

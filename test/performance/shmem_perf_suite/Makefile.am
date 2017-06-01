@@ -54,7 +54,11 @@ check_PROGRAMS += \
 	shmem_ctx_bibw_nb_put_perf \
 	shmem_ctx_bibw_nb_get_perf \
 	shmem_ctx_bibw_put_perf \
-	shmem_ctx_bibw_get_perf
+	shmem_ctx_bibw_get_perf \
+	shmem_ctx_latency_get_perf \
+	shmem_ctx_latency_nb_get_perf \
+	shmem_ctx_latency_put_perf \
+	shmem_ctx_latency_nb_put_perf
 endif
 endif
 

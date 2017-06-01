@@ -38,8 +38,8 @@
 
 #include <bw_common.h>
 
-#define shmem_putmem(dest, source, nelems, pe) \
-        shmem_putmem_nbi(dest, source, nelems, pe)
+#define shmemx_ctx_putmem(dest, source, nelems, pe, ctx) \
+        shmemx_ctx_putmem_nbi(dest, source, nelems, pe, ctx)
 
 #include <uni_dir_ctx.h>
 

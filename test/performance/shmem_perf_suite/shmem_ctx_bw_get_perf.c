@@ -38,8 +38,8 @@
 
 #include <bw_common.h>
 
-#define shmem_putmem(dest, source, nelems, pe) \
-        shmem_getmem(dest, source, nelems, pe)
+#define shmemx_ctx_putmem(dest, source, nelems, pe, ctx) \
+        shmemx_ctx_getmem(dest, source, nelems, pe, ctx)
 
 /* NO-OP */
 #define shmem_quiet();

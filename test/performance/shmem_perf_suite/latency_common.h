@@ -7,6 +7,7 @@
 */
 
 #include <common.h>
+#include <shmemx.h>
 
 #define PUT_IO_NODE 1
 #define GET_IO_NODE !PUT_IO_NODE
@@ -27,6 +28,11 @@ typedef struct perf_metrics {
    int my_node, npes;
    long * target;
    char * src, *dest;
+   int thread_safety;
+   int domain_thread_safety;
+   int nthreads;
+   shmemx_domain_t *domains;
+   shmemx_ctx_t *ctxs;
 } perf_metrics_t;
 
 void static data_init(perf_metrics_t * data) {
@@ -41,6 +47,11 @@ void static data_init(perf_metrics_t * data) {
    data->target = NULL;
    data->src = NULL;
    data->dest = NULL;
+   data->thread_safety = SHMEMX_THREAD_SINGLE;
+   data->domain_thread_safety = SHMEMX_THREAD_SINGLE;
+   data->nthreads = 1;
+   data->domains = NULL;
+   data->ctxs = NULL;
 }
 
 void static inline print_results_header(void) {
@@ -52,7 +63,7 @@ void static inline print_results_header(void) {
 void static inline calc_and_print_results(double start, double end, int len,
                                          perf_metrics_t data) {
     double latency = 0.0;
-    latency = (end - start) / data.trials;
+    latency = (end - start) / data.trials * data.nthreads;
 
     printf("%9d           %8.2f             \n", len, latency);
 }
@@ -68,7 +79,7 @@ void static inline command_line_arg_check(int argc, char *argv[],
     extern char *optarg;
 
     /* check command line args */
-    while ((ch = getopt(argc, argv, "e:s:n:v")) != EOF) {
+    while ((ch = getopt(argc, argv, "e:s:n:vc:t:d:")) != EOF) {
         switch (ch) {
         case 's':
             metric_info->start_len = strtol(optarg, (char **)NULL, 0);
@@ -87,6 +98,37 @@ void static inline command_line_arg_check(int argc, char *argv[],
         case 'v':
             metric_info->validate = true;
             break;
+        case 'c':
+            if (strcmp(optarg, "SINGLE") == 0) {
+                metric_info->thread_safety = SHMEMX_THREAD_SINGLE;
+            } else if (strcmp(optarg, "FUNNELED") == 0) {
+                metric_info->thread_safety = SHMEMX_THREAD_FUNNELED;
+            } else if (strcmp(optarg, "SERIALIZED") == 0) {
+                metric_info->thread_safety = SHMEMX_THREAD_SERIALIZED;
+            } else if (strcmp(optarg, "MULTIPLE") == 0) {
+                metric_info->thread_safety = SHMEMX_THREAD_MULTIPLE;
+            } else {
+                fprintf(stderr, "Unexpected value for -c: \"%s\"\n", optarg);
+                error = true;
+            }
+            break;
+        case 'd':
+            if (strcmp(optarg, "SINGLE") == 0) {
+                metric_info->domain_thread_safety = SHMEMX_THREAD_SINGLE;
+            } else if (strcmp(optarg, "FUNNELED") == 0) {
+                metric_info->domain_thread_safety = SHMEMX_THREAD_FUNNELED;
+            } else if (strcmp(optarg, "SERIALIZED") == 0) {
+                metric_info->domain_thread_safety = SHMEMX_THREAD_SERIALIZED;
+            } else if (strcmp(optarg, "MULTIPLE") == 0) {
+                metric_info->domain_thread_safety = SHMEMX_THREAD_MULTIPLE;
+            } else {
+                fprintf(stderr, "Unexpected value for -d: \"%s\"\n", optarg);
+                error = true;
+            }
+            break;
+        case 't':
+            metric_info->nthreads = atoi(optarg);
+            break;
         default:
             error = true;
             break;
@@ -98,6 +140,9 @@ void static inline command_line_arg_check(int argc, char *argv[],
             fprintf(stderr, "Usage: [-s start_length] [-e end_length] "\
                     ": lengths must be a power of two \n " \
                     "[-n trials (must be greater than 20)] "\
+                    "[-c runtime-thread-safety-config] \n"\
+                    "[-d domain-thread-safety-config] \n"\
+                    "[-t num-threads] \n"\
                     "[-v (validate results)]\n");
         }
 #ifndef VERSION_1_0
@@ -159,9 +204,16 @@ void static inline  multi_size_latency(perf_metrics_t data, char *argv[]) {
 /**************************************************************/
 
 void static inline latency_init_resources(int argc, char *argv[],
-                                          perf_metrics_t *data) {
+                                          perf_metrics_t *data,
+                                          const int use_contexts) {
 #ifndef VERSION_1_0
-    shmem_init();
+    int tl;
+    shmemx_init_thread(data->thread_safety, &tl);
+    if (tl != data->thread_safety) {
+        fprintf(stderr, "Could not initialize with requested thread level %d: "
+                "got %d\n", data->thread_safety, tl);
+        exit(-1);
+    }
 #else
     start_pes(0);
 #endif
@@ -171,6 +223,23 @@ void static inline latency_init_resources(int argc, char *argv[],
     only_two_PEs_check(data->my_node, data->npes);
 
     command_line_arg_check(argc, argv, data);
+
+#ifndef VERSION_1_0
+    if (use_contexts) {
+        int i;
+        // Set up domains and contexts, one context per thread
+        data->domains = (shmemx_ctx_t *)malloc(
+                data->nthreads * sizeof(shmemx_domain_t));
+        data->ctxs = (shmemx_ctx_t *)malloc(
+                data->nthreads * sizeof(shmemx_ctx_t));
+        assert(data->domains && data->ctxs);
+        shmemx_domain_create(data->domain_thread_safety,
+                data->nthreads, data->domains);
+        for (i = 0; i < data->nthreads; i++) {
+            shmemx_ctx_create(data->domains[i], data->ctxs + i);
+        }
+    }
+#endif
 
     data->src = aligned_buffer_alloc(data->max_len);
     init_array(data->src, data->max_len, data->my_node);
@@ -185,7 +254,8 @@ void static inline latency_init_resources(int argc, char *argv[],
 #endif
 }
 
-void static inline latency_free_resources(perf_metrics_t *data) {
+void static inline latency_free_resources(perf_metrics_t *data,
+                                          const int use_contexts) {
     shmem_barrier_all();
 
 #ifndef VERSION_1_0
@@ -196,14 +266,24 @@ void static inline latency_free_resources(perf_metrics_t *data) {
     aligned_buffer_free(data->src);
     aligned_buffer_free(data->dest);
 #ifndef VERSION_1_0
+    if (use_contexts) {
+        int i;
+        for (i = 0; i < data->nthreads; i++) {
+            shmemx_ctx_destroy(data->ctxs[i]);
+        }
+        shmemx_domain_destroy(data->nthreads, data->domains);
+        free(data->ctxs);
+        free(data->domains);
+    }
     shmem_finalize();
 #endif
 }
 
-void static inline latency_main(int argc, char *argv[]) {
+void static inline latency_main(int argc, char *argv[],
+        const int use_contexts) {
     perf_metrics_t data;
 
-    latency_init_resources(argc, argv, &data);
+    latency_init_resources(argc, argv, &data, use_contexts);
 
     long_element_round_trip_latency(data);
 
@@ -211,5 +291,5 @@ void static inline latency_main(int argc, char *argv[]) {
 
     multi_size_latency(data, argv);
 
-    latency_free_resources(&data);
+    latency_free_resources(&data, use_contexts);
 }

@@ -37,7 +37,7 @@
 int main(int argc, char *argv[])
 {
 
-    latency_main(argc, argv);
+    latency_main(argc, argv, 0);
 
     return 0;
 }  /* end of main() */

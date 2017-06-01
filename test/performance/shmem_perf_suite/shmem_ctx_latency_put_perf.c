@@ -27,46 +27,75 @@
 **  Notice: micro benchmark ~ two nodes only
 **
 **  Features of Test:
-**  1) small put pingpong latency test
-**  2) one sided latency test to calculate latency of various sizes
-**    to the network stack
+**  1) small get latency test
+**  2) getmem latency test to calculate latency of various sizes
 **
 */
 
 #include <latency_common.h>
+#include <round_t_latency_ctx.h>
+#include <int_element_latency_ctx.h>
+#include <omp.h>
 
 int main(int argc, char *argv[])
 {
-    latency_main(argc, argv, 0);
+
+    latency_main(argc, argv, 1);
 
     return 0;
 }  /* end of main() */
 
 
-/* NO-OP for non-blocking */
 void
-long_element_round_trip_latency(perf_metrics_t data) {}
+long_element_round_trip_latency(perf_metrics_t data)
+{
+    long_element_round_trip_latency_put_ctx(data);
+}
 
 void
-int_element_latency(perf_metrics_t data) {}
+int_element_latency(perf_metrics_t data)
+{
+    int_p_latency_ctx(data);
+}
 
 void
 streaming_latency(int len, perf_metrics_t *data)
 {
     double start = 0.0;
     double end = 0.0;
-    int i = 0;
+    static int print_once = 0;
+    if(!print_once && data->my_node == PUT_IO_NODE) {
+        printf("\nStreaming results for %d trials each of length %d through %d in"\
+              " powers of %d\n", data->trials, data->start_len,
+              data->max_len, data->inc);
+        print_results_header();
+        print_once++;
+    }
 
-    /*puts to zero to match gets validation scheme*/
     if (data->my_node == 1) {
+        
+#pragma omp parallel default(none) firstprivate(data, len) shared(start) \
+        num_threads(data->nthreads)
+        {
+            int i;
+            const int thread_id = omp_get_thread_num();
+            const shmemx_ctx_t ctx = data->ctxs[thread_id];
 
-        for (i = 0; i < data->trials + data->warmup; i++) {
-            if(i == data->warmup)
-                start = perf_shmemx_wtime();
+            for (i = 0; i < data->trials + data->warmup; i++) {
+                if (i == data->warmup) {
+                    shmemx_ctx_quiet(ctx);
 
-            shmem_putmem_nbi(data->dest, data->src, len, 0);
-            shmem_quiet();
+#pragma omp barrier
 
+#pragma omp master
+                    {
+                        start = perf_shmemx_wtime();
+                    }
+                }
+
+                shmemx_ctx_putmem(data->dest, data->src, len, 0, ctx);
+                shmemx_ctx_quiet(ctx);
+            }
         }
         end = perf_shmemx_wtime();
 
