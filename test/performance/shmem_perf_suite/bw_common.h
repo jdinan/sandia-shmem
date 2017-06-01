@@ -72,6 +72,7 @@ typedef struct perf_metrics {
     comm_style cstyle;
     bw_style bwstyle;
     int thread_safety;
+    int domain_thread_safety;
     int nthreads;
 } perf_metrics_t;
 
@@ -94,6 +95,7 @@ void static data_init(perf_metrics_t * data) {
     data->cstyle = COMM_PAIRWISE;
     data->bwstyle = STYLE_RMA;
     data->thread_safety = SHMEMX_THREAD_SINGLE;
+    data->domain_thread_safety = SHMEMX_THREAD_SINGLE;
     data->nthreads = 1;
 }
 
@@ -156,7 +158,7 @@ void static command_line_arg_check(int argc, char *argv[],
     extern char *optarg;
 
     /* check command line args */
-    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvc:t:")) != EOF) {
+    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvc:t:d:")) != EOF) {
         switch (ch) {
         case 's':
             metric_info->start_len = strtoul(optarg, (char **)NULL, 0);
@@ -221,6 +223,21 @@ void static command_line_arg_check(int argc, char *argv[],
                 error = true;
             }
             break;
+        case 'd':
+            if (strcmp(optarg, "SINGLE") == 0) {
+                metric_info->domain_thread_safety = SHMEMX_THREAD_SINGLE;
+            } else if (strcmp(optarg, "FUNNELED") == 0) {
+                metric_info->domain_thread_safety = SHMEMX_THREAD_FUNNELED;
+            } else if (strcmp(optarg, "SERIALIZED") == 0) {
+                metric_info->domain_thread_safety = SHMEMX_THREAD_SERIALIZED;
+            } else if (strcmp(optarg, "MULTIPLE") == 0) {
+                metric_info->domain_thread_safety = SHMEMX_THREAD_MULTIPLE;
+            } else {
+                fprintf(stderr, "Unexpected value for -d: \"%s\"\n", optarg);
+                error = true;
+            }
+            break;
+
         case 't':
             metric_info->nthreads = atoi(optarg);
             break;
@@ -315,8 +332,10 @@ void static print_results_header(perf_metrics_t metric_info) {
             metric_info.max_len, metric_info.size_inc);
 
 #ifdef ENABLE_OPENMP
-    printf(", thread safety %s (%d threads)",
-            thread_safety_str(metric_info.thread_safety), metric_info.nthreads);
+    printf(", thread safety %s (domain thread safety %s, %d threads)",
+            thread_safety_str(metric_info.thread_safety),
+            thread_safety_str(metric_info.domain_thread_safety),
+            metric_info.nthreads);
 #endif
 
     printf("\n\nLength           %s           "\

@@ -16,8 +16,8 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
     shmemx_ctx_t *ctxs = (shmemx_ctx_t *)malloc(
             metric_info->nthreads * sizeof(shmemx_ctx_t));
     assert(domains && ctxs);
-    shmemx_domain_create(metric_info->thread_safety, metric_info->nthreads,
-            domains);
+    shmemx_domain_create(metric_info->domain_thread_safety,
+            metric_info->nthreads, domains);
 
     char **srcs = (char **)malloc(metric_info->nthreads * sizeof(char *));
     char **dests = (char **)malloc(metric_info->nthreads * sizeof(char *));
@@ -43,6 +43,9 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
             shmemx_ctx_putmem(buf + metric_info->my_node,
                     buf + metric_info->my_node, sizeof(int), i, ctxs[j]);
         }
+    }
+    for (j = 0; j < metric_info->nthreads; j++) {
+        shmemx_ctx_quiet(ctxs[j]);
     }
     shmem_barrier_all();
 

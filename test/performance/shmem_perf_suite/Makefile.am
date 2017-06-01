@@ -47,7 +47,10 @@ check_PROGRAMS += \
 if ENABLE_OPENMP
 check_PROGRAMS += \
 	shmem_bw_put_ctx_lockless \
-	shmem_ctx_bw_nb_put_perf
+	shmem_ctx_bw_nb_put_perf \
+	shmem_ctx_bw_put_perf \
+	shmem_ctx_bw_nb_get_perf \
+	shmem_ctx_bw_get_perf
 endif
 endif
 
