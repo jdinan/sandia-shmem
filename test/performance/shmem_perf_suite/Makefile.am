@@ -50,7 +50,11 @@ check_PROGRAMS += \
 	shmem_ctx_bw_nb_put_perf \
 	shmem_ctx_bw_put_perf \
 	shmem_ctx_bw_nb_get_perf \
-	shmem_ctx_bw_get_perf
+	shmem_ctx_bw_get_perf \
+	shmem_ctx_bibw_nb_put_perf \
+	shmem_ctx_bibw_nb_get_perf \
+	shmem_ctx_bibw_put_perf \
+	shmem_ctx_bibw_get_perf
 endif
 endif
 
