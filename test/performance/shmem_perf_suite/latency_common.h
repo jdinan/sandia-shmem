@@ -61,9 +61,13 @@ void static inline print_results_header(void) {
 
 /*not storing results, only outputing it*/
 void static inline calc_and_print_results(double start, double end, int len,
-                                         perf_metrics_t data) {
+                                         perf_metrics_t data, const int use_contexts) {
     double latency = 0.0;
-    latency = (end - start) / data.trials * data.nthreads;
+    if (use_contexts) {
+        latency = (end - start) / (data.trials * data.nthreads);
+    } else {
+        latency = (end - start) / data.trials;
+    }
 
     printf("%9d           %8.2f             \n", len, latency);
 }

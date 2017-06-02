@@ -24,7 +24,7 @@ long_element_round_trip_latency_get(perf_metrics_t data)
         }
         end = perf_shmemx_wtime();
 
-        calc_and_print_results(start, end, sizeof(long), data);
+        calc_and_print_results(start, end, sizeof(long), data, 0);
 
         if(data.validate) {
             if(*data.target != partner_pe)
@@ -62,7 +62,7 @@ long_element_round_trip_latency_put(perf_metrics_t data)
         end = perf_shmemx_wtime();
 
         data.trials = data.trials*2; /*output half to get single round trip time*/
-        calc_and_print_results(start, end, sizeof(long), data);
+        calc_and_print_results(start, end, sizeof(long), data, 0);
 
    } else {
         for (i = 0; i < data.trials + data.warmup; i++) {

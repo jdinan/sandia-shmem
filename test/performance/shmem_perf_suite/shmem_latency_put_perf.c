@@ -85,6 +85,6 @@ streaming_latency(int len, perf_metrics_t *data)
         }
         end = perf_shmemx_wtime();
 
-        calc_and_print_results(start, end, len, *data);
+        calc_and_print_results(start, end, len, *data, 0);
     }
 } /* latency/bw for one-way trip */
