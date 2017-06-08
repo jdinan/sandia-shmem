@@ -52,8 +52,7 @@ static void *driver(void *user_data) {
 void static inline bi_bw_ctx(int len, perf_metrics_t *metric_info)
 {
     double start = 0.0, end = 0.0;
-    int i = 0, j = 0;
-    int dest = partner_node(*metric_info);
+    int i = 0;
 
     // Set up domains and contexts, one context per thread
     shmemx_domain_t *domains = (shmemx_ctx_t *)malloc(

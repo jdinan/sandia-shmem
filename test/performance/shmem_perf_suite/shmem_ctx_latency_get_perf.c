@@ -61,10 +61,9 @@ int_element_latency(perf_metrics_t data)
 typedef struct _streaming_driver_data {
     perf_metrics_t *data;
     pthread_barrier_t *barrier;
-    int thread_id;
     shmemx_ctx_t ctx;
     int len;
-    double *start;
+    double start, end;
 } streaming_driver_data;
 
 static void *streaming_driver(void *user_data) {
@@ -72,7 +71,6 @@ static void *streaming_driver(void *user_data) {
     streaming_driver_data *thread_data = (streaming_driver_data *)user_data;
     perf_metrics_t *data = thread_data->data;
     pthread_barrier_t *barrier = thread_data->barrier;
-    const int thread_id = thread_data->thread_id;
     const shmemx_ctx_t ctx = thread_data->ctx;
     const int len = thread_data->len;
 
@@ -82,15 +80,13 @@ static void *streaming_driver(void *user_data) {
 
             pthread_barrier_wait(barrier);
 
-            if (thread_id == 0) {
-                *(thread_data->start) = perf_shmemx_wtime();
-            }
+            thread_data->start = perf_shmemx_wtime();
         }
 
         shmemx_ctx_getmem(data->dest, data->src, len, 1, ctx);
     }
 
-    pthread_barrier_wait(barrier);
+    thread_data->end = perf_shmemx_wtime();
 
     return NULL;
 }
@@ -98,8 +94,6 @@ static void *streaming_driver(void *user_data) {
 void
 streaming_latency(int len, perf_metrics_t *data)
 {
-    double start = 0.0;
-    double end = 0.0;
     static int print_once = 0;
     if(!print_once && data->my_node == GET_IO_NODE) {
         printf("\nStreaming results for %d trials each of length %d through %d in"\
@@ -123,10 +117,8 @@ streaming_latency(int len, perf_metrics_t *data)
         for (i = 0; i < data->nthreads; i++) {
             thread_data[i].data = data;
             thread_data[i].barrier = &barrier;
-            thread_data[i].thread_id = i;
             thread_data[i].ctx = data->ctxs[i];
             thread_data[i].len = len;
-            thread_data[i].start = &start;
         }
 
         for (i = 0; i < data->nthreads - 1; i++) {
@@ -137,14 +129,15 @@ streaming_latency(int len, perf_metrics_t *data)
 
         streaming_driver(thread_data);
 
-        end = perf_shmemx_wtime();
+        double sum_cpu_time = thread_data[0].end - thread_data[0].start;
 
         for (i = 0; i < data->nthreads - 1; i++) {
             err = pthread_join(threads[i], NULL);
             assert(err == 0);
+            sum_cpu_time += (thread_data[i + 1].end - thread_data[i + 1].start);
         }
 
-        calc_and_print_results(start, end, len, *data, 1);
+        calc_and_print_results(sum_cpu_time, len, *data, 1);
 
         free(threads);
         free(thread_data);

@@ -1,18 +1,16 @@
 #include <pthread.h>
 
 typedef struct _driver_data {
-    int tid;
     shmemx_ctx_t ctx;
     perf_metrics_t *data;
-    double *start;
     pthread_barrier_t *barrier;
+    double start, end;
 } driver_data;
 
 static void *int_p_latency_driver(void *user_data) {
     int i;
     driver_data *thread_data = (driver_data *)user_data;
 
-    const int thread_id = thread_data->tid;
     const shmemx_ctx_t ctx = thread_data->ctx;
     perf_metrics_t *data = thread_data->data;
     pthread_barrier_t *barrier = thread_data->barrier;
@@ -23,26 +21,21 @@ static void *int_p_latency_driver(void *user_data) {
 
             pthread_barrier_wait(barrier);
 
-            if (thread_id == 0) {
-                *(thread_data->start) = perf_shmemx_wtime();
-            }
+            thread_data->start = perf_shmemx_wtime();
         }
 
         shmemx_ctx_int_p((int*) data->dest, data->my_node, 0, ctx);
         shmemx_ctx_quiet(ctx);
     }
 
-    pthread_barrier_wait(barrier);
-    
+    thread_data->end = perf_shmemx_wtime();
+
     return NULL;
 }
 
 void static inline
 int_p_latency_ctx(perf_metrics_t data)
 {
-    double start = 0.0;
-    double end = 0.0;
-
     if (data.my_node == PUT_IO_NODE) {
         printf("\nStream shmem_int_p results:\n");
         print_results_header();
@@ -58,10 +51,8 @@ int_p_latency_ctx(perf_metrics_t data)
     assert(threads && thread_data);
 
     for (int i = 0; i < data.nthreads; i++) {
-        thread_data[i].tid = i;
         thread_data[i].ctx = data.ctxs[i];
         thread_data[i].data = &data;
-        thread_data[i].start = &start;
         thread_data[i].barrier = &barrier;
     }
 
@@ -76,14 +67,15 @@ int_p_latency_ctx(perf_metrics_t data)
 
         int_p_latency_driver(thread_data);
 
-        end = perf_shmemx_wtime();
+        double sum_cpu_time = thread_data[0].end - thread_data[0].start;
 
         for (i = 1; i < data.nthreads; i++) {
             err = pthread_join(threads[i - 1], NULL);
             assert(err == 0);
+            sum_cpu_time += thread_data[i].end - thread_data[i].start;
         }
 
-        calc_and_print_results(start, end, sizeof(int), data, 1);
+        calc_and_print_results(sum_cpu_time, sizeof(int), data, 1);
     }
 
     shmem_barrier_all();
@@ -101,7 +93,6 @@ static void *int_g_latency_driver(void *user_data) {
     int i;
     driver_data *thread_data = (driver_data *)user_data;
 
-    const int thread_id = thread_data->tid;
     const shmemx_ctx_t ctx = thread_data->ctx;
     perf_metrics_t *data = thread_data->data;
     pthread_barrier_t *barrier = thread_data->barrier;
@@ -112,24 +103,20 @@ static void *int_g_latency_driver(void *user_data) {
 
             pthread_barrier_wait(barrier);
 
-            if (thread_id == 0) {
-                *(thread_data->start) = perf_shmemx_wtime();
-            }
+            thread_data->start = perf_shmemx_wtime();
         }
 
         int rtnd = shmemx_ctx_int_g((int*) data->src, 1, ctx);
     }
 
-    pthread_barrier_wait(barrier);
-    
+    thread_data->end = perf_shmemx_wtime();
+
     return NULL;
 }
 
 void static inline
 int_g_latency_ctx(perf_metrics_t data)
 {
-    double start = 0.0;
-    double end = 0.0;
     // int rtnd = -1;
 
     if (data.my_node == GET_IO_NODE) {
@@ -147,10 +134,8 @@ int_g_latency_ctx(perf_metrics_t data)
     assert(threads && thread_data);
 
     for (int i = 0; i < data.nthreads; i++) {
-        thread_data[i].tid = i;
         thread_data[i].ctx = data.ctxs[i];
         thread_data[i].data = &data;
-        thread_data[i].start = &start;
         thread_data[i].barrier = &barrier;
     }
 
@@ -164,14 +149,15 @@ int_g_latency_ctx(perf_metrics_t data)
 
         int_g_latency_driver(thread_data);
 
-        end = perf_shmemx_wtime();
+        double sum_cpu_time = thread_data[0].end - thread_data[0].start;
 
         for (i = 1; i < data.nthreads; i++) {
             err = pthread_join(threads[i - 1], NULL);
             assert(err == 0);
+            sum_cpu_time += (thread_data[i].end - thread_data[i].start);
         }
 
-        calc_and_print_results(start, end, sizeof(int), data, 1);
+        calc_and_print_results(sum_cpu_time, sizeof(int), data, 1);
     }
 
     shmem_barrier_all();

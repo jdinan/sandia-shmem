@@ -24,7 +24,7 @@ int_p_latency(perf_metrics_t data)
         }
         end = perf_shmemx_wtime();
 
-        calc_and_print_results(start, end, sizeof(int), data, 0);
+        calc_and_print_results(end - start, sizeof(int), data, 0);
     }
 
     shmem_barrier_all();
@@ -57,7 +57,7 @@ int_g_latency(perf_metrics_t data)
         }
         end = perf_shmemx_wtime();
 
-        calc_and_print_results(start, end, sizeof(int), data, 0);
+        calc_and_print_results(end - start, sizeof(int), data, 0);
     }
 
     shmem_barrier_all();
