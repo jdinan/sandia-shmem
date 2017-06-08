@@ -8,9 +8,6 @@
 
 #include <shmemx.h>
 #include <common.h>
-#ifdef ENABLE_OPENMP
-#include <omp.h>
-#endif
 
 #define MAX_MSG_SIZE (1<<23)
 #define START_LEN 1
