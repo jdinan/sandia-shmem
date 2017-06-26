@@ -54,21 +54,34 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
     double start = 0.0, end = 0.0;
     int i = 0;
 
-    // Set up domains and contexts, one context per thread
-    shmemx_domain_t *domains = (shmemx_ctx_t *)malloc(
-            metric_info->nthreads * sizeof(shmemx_domain_t));
-    shmemx_ctx_t *ctxs = (shmemx_ctx_t *)malloc(
-            metric_info->nthreads * sizeof(shmemx_ctx_t));
-    assert(domains && ctxs);
-    shmemx_domain_create(metric_info->domain_thread_safety,
-            metric_info->nthreads, domains);
+    // Set up domains and contexts
+    shmemx_domain_t *domains;
+    shmemx_ctx_t *ctxs;
+    if (metric_info->shared_domain) {
+        domains = (shmemx_ctx_t *)malloc(sizeof(shmemx_domain_t));
+        ctxs = (shmemx_ctx_t *)malloc(sizeof(shmemx_ctx_t));
+        assert(domains && ctxs);
+        shmemx_domain_create(metric_info->domain_thread_safety,
+                1, domains);
+        shmemx_ctx_create(domains[0], ctxs);
+    } else {
+        domains = (shmemx_ctx_t *)malloc(
+                metric_info->nthreads * sizeof(shmemx_domain_t));
+        ctxs = (shmemx_ctx_t *)malloc(
+                metric_info->nthreads * sizeof(shmemx_ctx_t));
+        assert(domains && ctxs);
+        shmemx_domain_create(metric_info->domain_thread_safety,
+                metric_info->nthreads, domains);
+        for (i = 0; i < metric_info->nthreads; i++) {
+            shmemx_ctx_create(domains[i], ctxs + i);
+        }
+    }
 
     char **srcs = (char **)malloc(metric_info->nthreads * sizeof(char *));
     char **dests = (char **)malloc(metric_info->nthreads * sizeof(char *));
     assert(srcs && dests);
 
     for (i = 0; i < metric_info->nthreads; i++) {
-        shmemx_ctx_create(domains[i], ctxs + i);
         srcs[i] = aligned_buffer_alloc(len);
         dests[i] = aligned_buffer_alloc(len);
         assert(srcs[i] && dests[i]);
@@ -85,7 +98,11 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
 
     for (i = 0; i < metric_info->nthreads; i++) {
         thread_data[i].tid = i;
-        thread_data[i].ctx = ctxs[i];
+        if (metric_info->shared_domain) {
+            thread_data[i].ctx = ctxs[0];
+        } else {
+            thread_data[i].ctx = ctxs[i];
+        }
         thread_data[i].src_buffer = srcs[i];
         thread_data[i].dest_buffer = dests[i];
         thread_data[i].barrier = &barrier;
@@ -117,11 +134,19 @@ void static inline uni_bw_ctx(int len, perf_metrics_t *metric_info,
     shmem_barrier_all();
 
     for (i = 0; i < metric_info->nthreads; i++) {
-        shmemx_ctx_destroy(ctxs[i]);
         aligned_buffer_free(srcs[i]);
         aligned_buffer_free(dests[i]);
     }
-    shmemx_domain_destroy(metric_info->nthreads, domains);
+
+    if (metric_info->shared_domain) {
+        shmemx_ctx_destroy(ctxs[0]);
+        shmemx_domain_destroy(1, domains);
+    } else {
+        for (i = 0; i < metric_info->nthreads; i++) {
+            shmemx_ctx_destroy(ctxs[i]);
+        }
+        shmemx_domain_destroy(metric_info->nthreads, domains);
+    }
 
     pthread_barrier_destroy(&barrier);
 

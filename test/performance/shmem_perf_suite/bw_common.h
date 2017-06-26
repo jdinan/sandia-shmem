@@ -71,6 +71,7 @@ typedef struct perf_metrics {
     int thread_safety;
     int domain_thread_safety;
     int nthreads;
+    int shared_domain;
 } perf_metrics_t;
 
 long red_psync[_SHMEM_REDUCE_SYNC_SIZE];
@@ -94,6 +95,7 @@ void static data_init(perf_metrics_t * data) {
     data->thread_safety = SHMEMX_THREAD_SINGLE;
     data->domain_thread_safety = SHMEMX_THREAD_SINGLE;
     data->nthreads = 1;
+    data->shared_domain = 0;
 }
 
 static const char * dt_names [] = { "int", "long", "longlong" };
@@ -155,7 +157,7 @@ void static command_line_arg_check(int argc, char *argv[],
     extern char *optarg;
 
     /* check command line args */
-    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvc:t:d:")) != EOF) {
+    while ((ch = getopt(argc, argv, "e:s:n:w:p:kbvc:t:d:m")) != EOF) {
         switch (ch) {
         case 's':
             metric_info->start_len = strtoul(optarg, (char **)NULL, 0);
@@ -238,6 +240,11 @@ void static command_line_arg_check(int argc, char *argv[],
         case 't':
             metric_info->nthreads = atoi(optarg);
             break;
+
+        case 'm':
+            metric_info->shared_domain = 1;
+            break;
+
         default:
             error = true;
             break;
@@ -255,7 +262,8 @@ void static command_line_arg_check(int argc, char *argv[],
                     "[-v (validate data stream)] \n"\
                     "[-c runtime-thread-safety-config] \n"\
                     "[-d domain-thread-safety-config] \n"\
-                    "[-t num-threads] \n");
+                    "[-t num-threads] \n"\
+                    "[-m (share domain for multi-threaded tests)] \n");
         }
 #ifndef VERSION_1_0
         shmem_finalize();
