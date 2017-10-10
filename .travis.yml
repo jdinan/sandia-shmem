@@ -45,7 +45,7 @@ env:
         - >
           SOS_ENABLE_ERROR_TESTS=1
           SMA_BARRIER_ALGORITHM=dissem SMA_REDUCE_ALGORITHM=recdbl SMA_FCOLLECT_ALGORITHM=recdbl
-          SOS_BUILD_OPTS="--enable-error-checking --enable-remote-virtual-addressing"
+          SOS_BUILD_OPTS="--enable-error-checking --enable-remote-virtual-addressing --enable-yield"
         - >
           SOS_ENABLE_ERROR_TESTS=1
           SMA_FCOLLECT_ALGORITHM=ring

@@ -16,12 +16,21 @@
 #ifndef SHMEM_ATOMIC_H
 #define SHMEM_ATOMIC_H
 
+#include "config.h"
+
 /* Compiler Barriers and stuff */
 
-#if defined(__i386__) || defined(__x86_64__)
-# define SPINLOCK_BODY() do { __asm__ __volatile__ ("pause" ::: "memory"); } while (0)
+#if defined ENABLE_YIELD
+#include <sched.h>
+#define SPIN_YIELD() sched_yield()
 #else
-# define SPINLOCK_BODY() do { __asm__ __volatile__ (::: "memory"); } while (0)
+#define SPIN_YIELD()
+#endif
+
+#if defined(__i386__) || defined(__x86_64__)
+# define SPINLOCK_BODY() do { __asm__ __volatile__ ("pause" ::: "memory"); SPIN_YIELD(); } while (0)
+#else
+# define SPINLOCK_BODY() do { __asm__ __volatile__ (::: "memory"); SPIN_YIELD(); } while (0)
 #endif
 
 #define COMPILER_FENCE() do { __asm__ __volatile__ ("" ::: "memory"); } while (0)
