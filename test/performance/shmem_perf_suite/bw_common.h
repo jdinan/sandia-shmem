@@ -289,6 +289,7 @@ static void command_line_arg_check(int argc, char *argv[],
             break;
         case 'T':
             metric_info->nthreads = atoi(optarg);
+            break;
         default:
             error = true;
             break;
