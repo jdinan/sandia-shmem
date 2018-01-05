@@ -637,12 +637,12 @@ void static inline bw_init_data_stream(perf_metrics_t *metric_info,
 
     metric_info->my_node = shmem_my_pe();
     metric_info->num_pes = shmem_n_pes();
+    metric_info->midpt = metric_info->num_pes/2;
+    metric_info->sztarget = metric_info->midpt;
+    metric_info->szinitiator = metric_info->midpt;
 
     for(i = 0; i < SHMEM_REDUCE_MIN_WRKDATA_SIZE; i++)
         red_psync[i] = SHMEM_SYNC_VALUE;
-
-    metric_info->my_node = shmem_my_pe();
-    metric_info->num_pes = shmem_n_pes();
 
     only_even_PEs_check(metric_info->my_node, metric_info->num_pes);
 
