@@ -241,6 +241,12 @@ AC_ARG_ENABLE([ofi-fence],
 AS_IF([test "$enable_ofi_fence" = "yes"],
       [AC_DEFINE([USE_FI_FENCE], [1], [If defined, the OFI transport will use FI_FENCE. Otherwise, transport layer fence is used.])])
 
+AC_ARG_ENABLE([ofi-auto-progress],
+    [AC_HELP_STRING([--disable-ofi-auto-progress],
+                    [Disable OFI automatic progress (default:disabled)])])
+AS_IF([test "$enable_ofi_auto_progress" != "no"],
+      [AC_DEFINE([ENABLE_OFI_AUTO_PROGRESS], [1], [Enable OFI automatic progress])])
+
 
 PKG_INSTALLDIR()
 
