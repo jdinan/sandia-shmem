@@ -339,6 +339,16 @@ void shmem_transport_probe(void)
 #  endif
 #endif
 
+#if defined(ENABLE_MANUAL_PROGRESS)
+    {
+        SHMEM_TRANSPORT_OFI_CTX_LOCK(&shmem_transport_ctx_default);
+        struct fi_cq_entry buf;
+        int ret = fi_cq_read(shmem_transport_ctx_default.cq, &buf, 1);
+        if (ret == 1)
+            RAISE_WARN_STR("Unexpected event");
+        SHMEM_TRANSPORT_OFI_CTX_UNLOCK(&shmem_transport_ctx_default);
+    }
+#endif
     return;
 }
 
