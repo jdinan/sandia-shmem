@@ -178,11 +178,13 @@ shmem_internal_init(int tl_requested, int *tl_provided)
     SHMEM_MUTEX_INIT(shmem_internal_mutex_alloc);
 #ifdef ENABLE_THREADS
     shmem_internal_thread_level = tl_requested;
-    *tl_provided = tl_requested;
+#elif !ENABLE_OFI_AUTO_PROGRESS
+    shmem_internal_thread_level = SHMEM_THREAD_MULTIPLE;
 #else
     shmem_internal_thread_level = SHMEM_THREAD_SINGLE;
-    *tl_provided = SHMEM_THREAD_SINGLE;
 #endif
+
+    *tl_provided = shmem_internal_thread_level;
 
 #if USE_ON_NODE_COMMS
     enable_node_ranks = 1;

@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <netdb.h>
+#include <pthread.h>
 
 #if HAVE_FNMATCH_H
 #include <fnmatch.h>
@@ -93,7 +94,7 @@ int                             shmem_transport_ofi_mr_rma_event;
 fi_addr_t                       *addr_table;
 #ifdef ENABLE_THREADS
 shmem_internal_mutex_t          shmem_transport_ofi_lock;
-pthread_mutex_t                 shmem_transport_ofi_progress_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t                 shmem_transport_ofi_target_ep_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* ENABLE_THREADS */
 
 /* Need a syscall to gettid() because glibc doesn't provide a wrapper
@@ -526,6 +527,61 @@ void shmem_transport_ofi_stx_allocate(shmem_transport_ctx_t *ctx)
 
     return;
 }
+
+
+void shmem_transport_ofi_progress(void) {
+    struct fi_cq_entry buf;
+    int ret, i;
+
+#ifdef USE_THREAD_COMPLETION
+    if (0 == pthread_mutex_trylock(&shmem_transport_ofi_target_ep_lock)) {
+#endif
+        ret = fi_cq_read(shmem_transport_ofi_target_cq, &buf, 1);
+        if (ret == 1) RAISE_WARN_STR("Unexpected event");
+#ifdef USE_THREAD_COMPLETION
+        pthread_mutex_unlock(&shmem_transport_ofi_target_ep_lock);
+    }
+#endif
+    SHMEM_TRANSPORT_OFI_CTX_LOCK(&shmem_transport_ctx_default);
+    ret = fi_cq_read(shmem_transport_ctx_default.cq, &buf, 1);
+    if (ret == 1) RAISE_WARN_STR("Unexpected event");
+    SHMEM_TRANSPORT_OFI_CTX_UNLOCK(&shmem_transport_ctx_default);
+
+    /* The OFI transport lock synchronizes accesses to the contexts array */
+    SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
+
+    for (i = 0; i < shmem_transport_ofi_contexts_len; i++) {
+        if (shmem_transport_ofi_contexts[i] == NULL)
+            continue;
+
+        shmem_internal_assertp(!shmem_transport_ofi_is_private(shmem_transport_ofi_contexts[i]->options));
+
+        SHMEM_TRANSPORT_OFI_CTX_LOCK(shmem_transport_ofi_contexts[i]);
+        ret = fi_cq_read(shmem_transport_ofi_contexts[i]->cq, &buf, 1);
+        if (ret == 1) RAISE_WARN_STR("Unexpected event");
+        SHMEM_TRANSPORT_OFI_CTX_UNLOCK(shmem_transport_ofi_contexts[i]);
+    }
+
+    SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+}
+
+#if !ENABLE_OFI_AUTO_PROGRESS
+
+static pthread_t shmem_transport_ofi_progress_thread;
+static int shmem_transport_ofi_progress_thread_enabled = 1;
+
+static void * shmem_transport_ofi_progress_thread_func(void *arg)
+{
+    while (shmem_transport_ofi_progress_thread_enabled) {
+        shmem_transport_ofi_progress();
+        usleep(1); // FIXME: Use nanosleep
+    }
+
+    return NULL;
+}
+
+#endif /* !ENABLE_OFI_AUTO_PROGRESS */
+
 
 #define OFI_MAJOR_VERSION 1
 #ifdef ENABLE_MR_RMA_EVENT
@@ -1100,7 +1156,7 @@ int query_for_fabric(struct fabric_info *info)
                                    for put with signal implementation */
 #endif
     hints.addr_format         = FI_FORMAT_UNSPEC;
-#if ENABLE_OFI_AUTO_PROGRESS
+#if !ENABLE_OFI_AUTO_PROGRESS
     domain_attr.data_progress = FI_PROGRESS_AUTO;
 #endif
     domain_attr.resource_mgmt = FI_RM_ENABLED;
@@ -1528,6 +1584,10 @@ int shmem_transport_startup(void)
     ret = populate_av();
     if (ret != 0) return ret;
 
+#if !ENABLE_OFI_AUTO_PROGRESS
+    pthread_create(&shmem_transport_ofi_progress_thread, NULL,
+                   &shmem_transport_ofi_progress_thread_func, NULL);
+#endif
     return 0;
 }
 
@@ -1593,34 +1653,8 @@ void shmem_transport_ctx_destroy(shmem_transport_ctx_t *ctx)
 {
     int ret;
 
-    if(shmem_internal_params.DEBUG) {
-        SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
-        if (ctx->bounce_buffers) SHMEM_TRANSPORT_OFI_CTX_BB_LOCK(ctx);
-        DEBUG_MSG("id = %d, options = %#0lx, stx_idx = %d\n"
-                  RAISE_PE_PREFIX "pending_put_cntr = %9"PRIu64", completed_put_cntr = %9"PRIu64"\n"
-                  RAISE_PE_PREFIX "pending_get_cntr = %9"PRIu64", completed_get_cntr = %9"PRIu64"\n"
-                  RAISE_PE_PREFIX "pending_bb_cntr  = %9"PRIu64", completed_bb_cntr  = %9"PRIu64"\n",
-                  ctx->id, (unsigned long) ctx->options, ctx->stx_idx,
-                  shmem_internal_my_pe,
-                  SHMEM_TRANSPORT_OFI_CNTR_READ(&ctx->pending_put_cntr), fi_cntr_read(ctx->put_cntr),
-                  shmem_internal_my_pe,
-                  SHMEM_TRANSPORT_OFI_CNTR_READ(&ctx->pending_get_cntr), fi_cntr_read(ctx->get_cntr),
-                  shmem_internal_my_pe,
-                  ctx->pending_bb_cntr, ctx->completed_bb_cntr
-                 );
-        if (ctx->bounce_buffers) SHMEM_TRANSPORT_OFI_CTX_BB_UNLOCK(ctx);
-        SHMEM_TRANSPORT_OFI_CTX_UNLOCK(ctx);
-    }
-
-    if (ctx->ep) {
-        ret = fi_close(&ctx->ep->fid);
-        OFI_CHECK_ERROR_MSG(ret, "Context endpoint close failed (%s)\n", fi_strerror(errno));
-    }
-
-    if (ctx->bounce_buffers) {
-        shmem_free_list_destroy(ctx->bounce_buffers);
-    }
-
+    /* Pull the context out of the list first, to ensure the progress thread
+     * doesn't poke the context while it's being freed */
     if (ctx->stx_idx >= 0) {
         SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
         if (shmem_transport_ofi_is_private(ctx->options)) {
@@ -1647,6 +1681,34 @@ void shmem_transport_ctx_destroy(shmem_transport_ctx_t *ctx)
             }
         }
         SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+    }
+
+    if(shmem_internal_params.DEBUG) {
+        SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
+        if (ctx->bounce_buffers) SHMEM_TRANSPORT_OFI_CTX_BB_LOCK(ctx);
+        DEBUG_MSG("id = %d, options = %#0lx, stx_idx = %d\n"
+                  RAISE_PE_PREFIX "pending_put_cntr = %9"PRIu64", completed_put_cntr = %9"PRIu64"\n"
+                  RAISE_PE_PREFIX "pending_get_cntr = %9"PRIu64", completed_get_cntr = %9"PRIu64"\n"
+                  RAISE_PE_PREFIX "pending_bb_cntr  = %9"PRIu64", completed_bb_cntr  = %9"PRIu64"\n",
+                  ctx->id, (unsigned long) ctx->options, ctx->stx_idx,
+                  shmem_internal_my_pe,
+                  SHMEM_TRANSPORT_OFI_CNTR_READ(&ctx->pending_put_cntr), fi_cntr_read(ctx->put_cntr),
+                  shmem_internal_my_pe,
+                  SHMEM_TRANSPORT_OFI_CNTR_READ(&ctx->pending_get_cntr), fi_cntr_read(ctx->get_cntr),
+                  shmem_internal_my_pe,
+                  ctx->pending_bb_cntr, ctx->completed_bb_cntr
+                 );
+        if (ctx->bounce_buffers) SHMEM_TRANSPORT_OFI_CTX_BB_UNLOCK(ctx);
+        SHMEM_TRANSPORT_OFI_CTX_UNLOCK(ctx);
+    }
+
+    if (ctx->ep) {
+        ret = fi_close(&ctx->ep->fid);
+        OFI_CHECK_ERROR_MSG(ret, "Context endpoint close failed (%s)\n", fi_strerror(errno));
+    }
+
+    if (ctx->bounce_buffers) {
+        shmem_free_list_destroy(ctx->bounce_buffers);
     }
 
     if (ctx->put_cntr) {
@@ -1684,6 +1746,12 @@ int shmem_transport_fini(void)
     int ret;
     shmem_transport_ofi_stx_kvs_t* e;
     int stx_len = 0;
+
+#if !ENABLE_OFI_AUTO_PROGRESS
+    void *progress_out;
+    shmem_transport_ofi_progress_thread_enabled = 0;
+    pthread_join(shmem_transport_ofi_progress_thread, &progress_out);
+#endif
 
     /* Free all shareable contexts.  This performs a quiet on each context,
      * ensuring all operations have completed before proceeding with shutdown. */
