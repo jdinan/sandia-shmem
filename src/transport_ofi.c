@@ -542,9 +542,17 @@ void shmem_transport_ofi_progress(void) {
         pthread_mutex_unlock(&shmem_transport_ofi_target_ep_lock);
     }
 #endif
+
+    /* FIXME: hoping the ctx lock is sufficient to access the bounce buffers field */
     SHMEM_TRANSPORT_OFI_CTX_LOCK(&shmem_transport_ctx_default);
-    ret = fi_cq_read(shmem_transport_ctx_default.cq, &buf, 1);
-    if (ret == 1) RAISE_WARN_STR("Unexpected event");
+    if (shmem_transport_ctx_default.bounce_buffers) {
+        SHMEM_TRANSPORT_OFI_CTX_BB_LOCK(&shmem_transport_ctx_default);
+        shmem_transport_ofi_drain_cq(&shmem_transport_ctx_default);
+        SHMEM_TRANSPORT_OFI_CTX_BB_UNLOCK(&shmem_transport_ctx_default);
+    } else {
+        ret = fi_cq_read(shmem_transport_ctx_default.cq, &buf, 1);
+        if (ret == 1) RAISE_WARN_STR("Unexpected event");
+    }
     SHMEM_TRANSPORT_OFI_CTX_UNLOCK(&shmem_transport_ctx_default);
 
     /* The OFI transport lock synchronizes accesses to the contexts array */
@@ -557,15 +565,21 @@ void shmem_transport_ofi_progress(void) {
         shmem_internal_assertp(!shmem_transport_ofi_is_private(shmem_transport_ofi_contexts[i]->options));
 
         SHMEM_TRANSPORT_OFI_CTX_LOCK(shmem_transport_ofi_contexts[i]);
-        ret = fi_cq_read(shmem_transport_ofi_contexts[i]->cq, &buf, 1);
-        if (ret == 1) RAISE_WARN_STR("Unexpected event");
+        if (shmem_transport_ofi_contexts[i]->bounce_buffers) {
+            SHMEM_TRANSPORT_OFI_CTX_BB_LOCK(shmem_transport_ofi_contexts[i]);
+            shmem_transport_ofi_drain_cq(shmem_transport_ofi_contexts[i]);
+            SHMEM_TRANSPORT_OFI_CTX_BB_UNLOCK(shmem_transport_ofi_contexts[i]);
+        } else {
+            ret = fi_cq_read(shmem_transport_ofi_contexts[i]->cq, &buf, 1);
+            if (ret == 1) RAISE_WARN_STR("Unexpected event");
+        }
         SHMEM_TRANSPORT_OFI_CTX_UNLOCK(shmem_transport_ofi_contexts[i]);
     }
 
     SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
 }
 
-#if !ENABLE_OFI_AUTO_PROGRESS
+#if !defined(ENABLE_OFI_AUTO_PROGRESS)
 
 static pthread_t shmem_transport_ofi_progress_thread;
 static int shmem_transport_ofi_progress_thread_enabled = 1;
@@ -1156,7 +1170,7 @@ int query_for_fabric(struct fabric_info *info)
                                    for put with signal implementation */
 #endif
     hints.addr_format         = FI_FORMAT_UNSPEC;
-#if !ENABLE_OFI_AUTO_PROGRESS
+#if !defined(ENABLE_OFI_AUTO_PROGRESS)
     domain_attr.data_progress = FI_PROGRESS_AUTO;
 #endif
     domain_attr.resource_mgmt = FI_RM_ENABLED;
@@ -1584,7 +1598,7 @@ int shmem_transport_startup(void)
     ret = populate_av();
     if (ret != 0) return ret;
 
-#if !ENABLE_OFI_AUTO_PROGRESS
+#if !defined(ENABLE_OFI_AUTO_PROGRESS)
     pthread_create(&shmem_transport_ofi_progress_thread, NULL,
                    &shmem_transport_ofi_progress_thread_func, NULL);
 #endif
@@ -1651,12 +1665,14 @@ int shmem_transport_ctx_create(long options, shmem_transport_ctx_t **ctx)
 
 void shmem_transport_ctx_destroy(shmem_transport_ctx_t *ctx)
 {
-    int ret;
+    int ret, id;
+
+    SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
+    SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
 
     /* Pull the context out of the list first, to ensure the progress thread
      * doesn't poke the context while it's being freed */
     if (ctx->stx_idx >= 0) {
-        SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
         if (shmem_transport_ofi_is_private(ctx->options)) {
             shmem_transport_ofi_stx_kvs_t *e;
             HASH_FIND(hh, shmem_transport_ofi_stx_kvs, &ctx->tid,
@@ -1676,15 +1692,14 @@ void shmem_transport_ctx_destroy(shmem_transport_ctx_t *ctx)
         } else {
             shmem_transport_ofi_stx_pool[ctx->stx_idx].ref_cnt--;
             if (shmem_transport_ofi_stx_pool[ctx->stx_idx].is_private) {
+                SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
                 SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
                 RAISE_ERROR_STR("Destroyed a ctx with an inconsistent is_private field");
             }
         }
-        SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
     }
 
     if(shmem_internal_params.DEBUG) {
-        SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
         if (ctx->bounce_buffers) SHMEM_TRANSPORT_OFI_CTX_BB_LOCK(ctx);
         DEBUG_MSG("id = %d, options = %#0lx, stx_idx = %d\n"
                   RAISE_PE_PREFIX "pending_put_cntr = %9"PRIu64", completed_put_cntr = %9"PRIu64"\n"
@@ -1699,12 +1714,15 @@ void shmem_transport_ctx_destroy(shmem_transport_ctx_t *ctx)
                   ctx->pending_bb_cntr, ctx->completed_bb_cntr
                  );
         if (ctx->bounce_buffers) SHMEM_TRANSPORT_OFI_CTX_BB_UNLOCK(ctx);
-        SHMEM_TRANSPORT_OFI_CTX_UNLOCK(ctx);
     }
 
     if (ctx->ep) {
         ret = fi_close(&ctx->ep->fid);
-        OFI_CHECK_ERROR_MSG(ret, "Context endpoint close failed (%s)\n", fi_strerror(errno));
+        if (ret) {
+            SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
+            SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+            RAISE_ERROR_MSG("Context endpoint close failed (%s)\n", fi_strerror(errno));
+        }
     }
 
     if (ctx->bounce_buffers) {
@@ -1713,32 +1731,49 @@ void shmem_transport_ctx_destroy(shmem_transport_ctx_t *ctx)
 
     if (ctx->put_cntr) {
         ret = fi_close(&ctx->put_cntr->fid);
-        OFI_CHECK_ERROR_MSG(ret, "Context put CNTR close failed (%s)\n", fi_strerror(errno));
+        if (ret) {
+            SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
+            SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+            RAISE_ERROR_MSG("Context put CNTR close failed (%s)\n", fi_strerror(errno));
+        }
     }
 
     if (ctx->get_cntr) {
         ret = fi_close(&ctx->get_cntr->fid);
         OFI_CHECK_ERROR_MSG(ret, "Context get CNTR close failed (%s)\n", fi_strerror(errno));
+        if (ret) {
+            SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
+            SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+            RAISE_ERROR_MSG("Context put CNTR close failed (%s)\n", fi_strerror(errno));
+        }
     }
 
     if (ctx->cq) {
         ret = fi_close(&ctx->cq->fid);
-        OFI_CHECK_ERROR_MSG(ret, "Context CQ close failed (%s)\n", fi_strerror(errno));
+        if (ret) {
+            SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx);
+            SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+            RAISE_ERROR_MSG("Context CQ close failed (%s)\n", fi_strerror(errno));
+        }
     }
 
+    id = ctx->id;
+
+    SHMEM_TRANSPORT_OFI_CTX_UNLOCK(ctx);
 #ifdef USE_CTX_LOCK
     SHMEM_MUTEX_DESTROY(ctx->lock);
 #endif
 
-    if (ctx->id >= 0) {
-        SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
-        shmem_transport_ofi_contexts[ctx->id] = NULL;
-        SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+    if (id >= 0) {
+        shmem_transport_ofi_contexts[id] = NULL;
         free(ctx);
     }
-    else if (ctx->id != SHMEM_TRANSPORT_CTX_DEFAULT_ID) {
-        RAISE_ERROR_MSG("Attempted to destroy an invalid context (%d)\n", ctx->id);
+    else if (id != SHMEM_TRANSPORT_CTX_DEFAULT_ID) {
+        SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+        RAISE_ERROR_MSG("Attempted to destroy an invalid context (%d)\n", id);
     }
+
+    SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
 }
 
 int shmem_transport_fini(void)
@@ -1747,7 +1782,7 @@ int shmem_transport_fini(void)
     shmem_transport_ofi_stx_kvs_t* e;
     int stx_len = 0;
 
-#if !ENABLE_OFI_AUTO_PROGRESS
+#if !defined(ENABLE_OFI_AUTO_PROGRESS)
     void *progress_out;
     shmem_transport_ofi_progress_thread_enabled = 0;
     pthread_join(shmem_transport_ofi_progress_thread, &progress_out);
@@ -1755,6 +1790,8 @@ int shmem_transport_fini(void)
 
     /* Free all shareable contexts.  This performs a quiet on each context,
      * ensuring all operations have completed before proceeding with shutdown. */
+
+    /* FIXME: Need to take OFI lock before accessing contexts array? */
 
     for (size_t i = 0; i < shmem_transport_ofi_contexts_len; ++i) {
         if (shmem_transport_ofi_contexts[i]) {
@@ -1766,6 +1803,9 @@ int shmem_transport_fini(void)
     }
 
     if (shmem_transport_ofi_contexts) free(shmem_transport_ofi_contexts);
+
+    SHMEM_MUTEX_DESTROY(shmem_transport_ofi_lock);
+
 
     shmem_transport_quiet(&shmem_transport_ctx_default);
     shmem_transport_ctx_destroy(&shmem_transport_ctx_default);
@@ -1827,8 +1867,6 @@ int shmem_transport_fini(void)
 #endif
 
     fi_freeinfo(shmem_transport_ofi_info.fabrics);
-
-    SHMEM_MUTEX_DESTROY(shmem_transport_ofi_lock);
 
     return 0;
 }

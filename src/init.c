@@ -178,10 +178,13 @@ shmem_internal_init(int tl_requested, int *tl_provided)
     SHMEM_MUTEX_INIT(shmem_internal_mutex_alloc);
 #ifdef ENABLE_THREADS
     shmem_internal_thread_level = tl_requested;
-#elif !ENABLE_OFI_AUTO_PROGRESS
-    shmem_internal_thread_level = SHMEM_THREAD_MULTIPLE;
 #else
     shmem_internal_thread_level = SHMEM_THREAD_SINGLE;
+#endif
+
+    /* FIXME: Need ENABLE_THREADS with progress thread */
+#if !defined(ENABLE_OFI_AUTO_PROGRESS)
+    shmem_internal_thread_level = SHMEM_THREAD_MULTIPLE;
 #endif
 
     *tl_provided = shmem_internal_thread_level;

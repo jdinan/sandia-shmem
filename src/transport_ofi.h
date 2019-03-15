@@ -313,13 +313,13 @@ extern struct fid_ep* shmem_transport_ofi_target_ep;
     do {                                                                        \
         shmem_internal_assert(ctx->bounce_buffers != NULL);                     \
         if (!((ctx)->options & (SHMEM_CTX_PRIVATE | SHMEM_CTX_SERIALIZED)))     \
-            shmem_free_list_lock(ctx->bounce_buffers);                          \
+            shmem_free_list_lock((ctx)->bounce_buffers);                          \
     } while (0)
 
 #define SHMEM_TRANSPORT_OFI_CTX_BB_UNLOCK(ctx)                                  \
     do {                                                                        \
         if (!((ctx)->options & (SHMEM_CTX_PRIVATE | SHMEM_CTX_SERIALIZED)))     \
-            shmem_free_list_unlock(ctx->bounce_buffers);                        \
+            shmem_free_list_unlock((ctx)->bounce_buffers);                        \
     } while (0)
 
 void shmem_transport_ofi_progress(void);
