@@ -1174,7 +1174,7 @@ int query_for_fabric(struct fabric_info *info)
                                    for put with signal implementation */
 #endif
     hints.addr_format         = FI_FORMAT_UNSPEC;
-#if !defined(ENABLE_OFI_AUTO_PROGRESS)
+#if defined(ENABLE_OFI_AUTO_PROGRESS)
     domain_attr.data_progress = FI_PROGRESS_AUTO;
 #endif
     domain_attr.resource_mgmt = FI_RM_ENABLED;
