@@ -364,12 +364,16 @@ void shmem_transport_ofi_dump_stx(void) {
 
 static inline
 int shmem_transport_ofi_is_private(long options) {
+#if !defined(ENABLE_OFI_AUTO_PROGRESS)
+    return 0;
+#else
     if (!shmem_internal_params.OFI_STX_DISABLE_PRIVATE &&
         (options & SHMEM_CTX_PRIVATE)) {
         return 1;
     } else {
         return 0;
     }
+#endif
 }
 
 static unsigned int rand_pool_seed;
