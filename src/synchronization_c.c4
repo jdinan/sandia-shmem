@@ -192,7 +192,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_WAIT_UNTIL')
         size_t i;                                                                              \
                                                                                                \
         if (nelems == 0) {                                                                     \
-            shmem_transport_probe();                                                           \
+            shmem_transport_probe(1);                                                           \
             return;                                                                            \
         }                                                                                      \
                                                                                                \
@@ -223,7 +223,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_WAIT_UNTIL_ALL')
             }                                                                                  \
         }                                                                                      \
         if (nelems == 0 || num_ignored == nelems) {                                            \
-            shmem_transport_probe();                                                           \
+            shmem_transport_probe(1);                                                           \
             return SIZE_MAX;                                                                   \
         }                                                                                      \
                                                                                                \
@@ -244,7 +244,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_WAIT_UNTIL_ALL')
                     }                                                                          \
                 }                                                                              \
             }                                                                                  \
-            if (!cmpret) shmem_transport_probe();                                              \
+            if (!cmpret) shmem_transport_probe(1);                                              \
         }                                                                                      \
                                                                                                \
         shmem_internal_membar_load();                                                          \
@@ -272,7 +272,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_WAIT_UNTIL_ANY')
             }                                                                                  \
         }                                                                                      \
         if (nelems == 0 || num_ignored == nelems) {                                            \
-            shmem_transport_probe();                                                           \
+            shmem_transport_probe(1);                                                           \
             return 0;                                                                          \
         }                                                                                      \
                                                                                                \
@@ -288,7 +288,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_WAIT_UNTIL_ANY')
                     }                                                                          \
                 }                                                                              \
             }                                                                                  \
-            if (!cmpret) shmem_transport_probe();                                              \
+            if (!cmpret) shmem_transport_probe(1);                                              \
         }                                                                                      \
         shmem_internal_membar_load();                                                          \
         shmem_transport_syncmem();                                                             \
@@ -311,7 +311,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_WAIT_UNTIL_SOME')
         if (cmpret) {                                                                          \
             shmem_internal_membar_load();                                                      \
         } else {                                                                               \
-            shmem_transport_probe();                                                           \
+            shmem_transport_probe(1);                                                           \
         }                                                                                      \
         return cmpret;                                                                         \
     }
@@ -329,7 +329,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_TEST')
         SHMEM_ERR_CHECK_CMP_OP(cond);                                                          \
                                                                                                \
         if (nelems == 0) {                                                                     \
-            shmem_transport_probe();                                                           \
+            shmem_transport_probe(1);                                                           \
             return 1;                                                                          \
         }                                                                                      \
                                                                                                \
@@ -342,7 +342,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_TEST')
             shmem_internal_membar_load();                                                      \
             return 1;                                                                          \
         } else {                                                                               \
-            shmem_transport_probe();                                                           \
+            shmem_transport_probe(1);                                                           \
             return 0;                                                                          \
         }                                                                                      \
     }
@@ -380,7 +380,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_TEST_ALL')
         if (found_idx != SIZE_MAX)                                                             \
             shmem_internal_membar_load();                                                      \
         else                                                                                   \
-            shmem_transport_probe();                                                           \
+            shmem_transport_probe(1);                                                           \
                                                                                                \
         return found_idx;                                                                      \
     }
@@ -405,7 +405,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_TEST_ANY')
             }                                                                                  \
         }                                                                                      \
         if (nelems == 0 || num_ignored == nelems) {                                            \
-            shmem_transport_probe();                                                           \
+            shmem_transport_probe(1);                                                           \
             return 0;                                                                          \
         }                                                                                      \
                                                                                                \
@@ -420,7 +420,7 @@ SHMEM_BIND_C_SYNC(`SHMEM_DEF_TEST_ANY')
                 }                                                                              \
             }                                                                                  \
         }                                                                                      \
-        if (!cmpret) shmem_transport_probe();                                                  \
+        if (!cmpret) shmem_transport_probe(1);                                                  \
         shmem_internal_membar_load();                                                          \
         shmem_transport_syncmem();                                                             \
         return ncompleted;                                                                     \

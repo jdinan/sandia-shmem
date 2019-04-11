@@ -286,17 +286,16 @@ extern shmem_transport_ctx_t shmem_transport_ctx_default;
 
 extern struct fid_ep* shmem_transport_ofi_target_ep;
 
+extern shmem_internal_mutex_t shmem_transport_ofi_lock;
 #ifdef USE_CTX_LOCK
 #define SHMEM_TRANSPORT_OFI_CTX_LOCK(ctx)                                       \
     do {                                                                        \
-        if (!((ctx)->options & (SHMEM_CTX_PRIVATE | SHMEM_CTX_SERIALIZED)))     \
-            SHMEM_MUTEX_LOCK((ctx)->lock);                                      \
+            SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);                                      \
     } while (0)
 
 #define SHMEM_TRANSPORT_OFI_CTX_UNLOCK(ctx)                                     \
     do {                                                                        \
-        if (!((ctx)->options & (SHMEM_CTX_PRIVATE | SHMEM_CTX_SERIALIZED)))     \
-            SHMEM_MUTEX_UNLOCK((ctx)->lock);                                    \
+            SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);                                    \
     } while (0)
 
 #define SHMEM_TRANSPORT_OFI_CNTR_READ(cntr) *(cntr)
@@ -323,19 +322,18 @@ extern struct fid_ep* shmem_transport_ofi_target_ep;
     } while (0)
 
 static inline
-void shmem_transport_probe(void)
+void shmem_transport_probe(int take_lock)
 {
 #if defined(ENABLE_MANUAL_PROGRESS)
 #  ifdef USE_THREAD_COMPLETION
-    if (0 == pthread_mutex_trylock(&shmem_transport_ofi_progress_lock)) {
+    if (take_lock) SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
 #  endif
         struct fi_cq_entry buf;
         int ret = fi_cq_read(shmem_transport_ofi_target_cq, &buf, 1);
         if (ret == 1)
             RAISE_WARN_STR("Unexpected event");
 #  ifdef USE_THREAD_COMPLETION
-        pthread_mutex_unlock(&shmem_transport_ofi_progress_lock);
-    }
+    if (take_lock) SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
 #  endif
 #endif
 
@@ -451,7 +449,7 @@ void shmem_transport_put_quiet(shmem_transport_ctx_t* ctx)
         fail = fi_cntr_readerr(ctx->put_cntr);
         cnt = SHMEM_TRANSPORT_OFI_CNTR_READ(&ctx->pending_put_cntr);
 
-        shmem_transport_probe();
+        shmem_transport_probe(0);
 
         if (success < cnt && fail == 0) {
             SHMEM_TRANSPORT_OFI_CTX_UNLOCK(ctx);
@@ -529,7 +527,7 @@ int try_again(shmem_transport_ctx_t *ctx, const int ret, uint64_t *polled) {
                 }
             }
 
-            shmem_transport_probe();
+            shmem_transport_probe(0);
 
             (*polled)++;
 
@@ -912,7 +910,7 @@ void shmem_transport_get_wait(shmem_transport_ctx_t* ctx)
         fail = fi_cntr_readerr(ctx->get_cntr);
         cnt = SHMEM_TRANSPORT_OFI_CNTR_READ(&ctx->pending_get_cntr);
 
-        shmem_transport_probe();
+        shmem_transport_probe(0);
 
         if (success < cnt && fail == 0) {
             SHMEM_TRANSPORT_OFI_CTX_UNLOCK(ctx);
@@ -1491,12 +1489,11 @@ uint64_t shmem_transport_pcntr_get_completed_target(void)
     uint64_t cnt = 0;
 #if ENABLE_TARGET_CNTR
 #  ifdef USE_THREAD_COMPLETION
-    if (0 == pthread_mutex_lock(&shmem_transport_ofi_progress_lock)) {
+    SHMEM_MUTEX_LOCK(shmem_transport_ofi_lock);
 #  endif
         cnt = fi_cntr_read(shmem_transport_ofi_target_cntrfd);
 #  ifdef USE_THREAD_COMPLETION
-        pthread_mutex_unlock(&shmem_transport_ofi_progress_lock);
-    }
+    SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
 #  endif
 #else
     cnt = 0;
