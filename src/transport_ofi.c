@@ -1211,6 +1211,26 @@ int query_for_fabric(struct fabric_info *info)
               info->p_info->domain_attr->max_ep_stx_ctx == 0 ? "no" : "yes",
               shmem_transport_ofi_stx_max);
 
+#if FI_MAJOR_VERSION >= 1 && FI_MINOR_VERSION >= 7
+#define STR_OR_NULL(s) (s) ? (s) : "null"
+
+    if (info->p_info->nic != NULL) {
+        DEBUG_MSG("OFI NIC: %s\n"
+                  RAISE_PE_PREFIX "device_id     : %s\n"
+                  RAISE_PE_PREFIX "device_version: %s\n"
+                  RAISE_PE_PREFIX "vendor_id     : %s\n"
+                  RAISE_PE_PREFIX "driver        : %s\n"
+                  RAISE_PE_PREFIX "firmware      : %s\n",
+                  info->p_info->nic->device_attr->name,
+                  shmem_internal_my_pe, STR_OR_NULL(info->p_info->nic->device_attr->device_id),
+                  shmem_internal_my_pe, STR_OR_NULL(info->p_info->nic->device_attr->device_version),
+                  shmem_internal_my_pe, STR_OR_NULL(info->p_info->nic->device_attr->vendor_id),
+                  shmem_internal_my_pe, STR_OR_NULL(info->p_info->nic->device_attr->driver),
+                  shmem_internal_my_pe, STR_OR_NULL(info->p_info->nic->device_attr->firmware));
+    }
+#undef STR_OR_NULL
+#endif
+
     return ret;
 }
 
