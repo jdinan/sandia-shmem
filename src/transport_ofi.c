@@ -364,7 +364,9 @@ void shmem_transport_ofi_dump_stx(void) {
 
 static inline
 int shmem_transport_ofi_is_private(long options) {
-#if !defined(ENABLE_OFI_AUTO_PROGRESS)
+    /* Context privatization is disabled if TX progress is requested.  This
+     * enables any thread to probe all contexts. */
+#if defined(ENABLE_OFI_TX_PROGRESS)
     return 0;
 #else
     if (!shmem_internal_params.OFI_STX_DISABLE_PRIVATE &&
@@ -547,6 +549,7 @@ void shmem_transport_ofi_progress(void) {
     }
 #endif
 
+#ifdef ENABLE_OFI_TX_PROGRESS
     /* FIXME: hoping the ctx lock is sufficient to access the bounce buffers field */
     SHMEM_TRANSPORT_OFI_CTX_LOCK(&shmem_transport_ctx_default);
     if (shmem_transport_ctx_default.bounce_buffers) {
@@ -581,24 +584,8 @@ void shmem_transport_ofi_progress(void) {
     }
 
     SHMEM_MUTEX_UNLOCK(shmem_transport_ofi_lock);
+#endif
 }
-
-#if !defined(ENABLE_OFI_AUTO_PROGRESS)
-
-static pthread_t shmem_transport_ofi_progress_thread;
-static int shmem_transport_ofi_progress_thread_enabled = 1;
-
-static void * shmem_transport_ofi_progress_thread_func(void *arg)
-{
-    while (shmem_transport_ofi_progress_thread_enabled) {
-        shmem_transport_ofi_progress();
-        usleep(1); // FIXME: Use nanosleep
-    }
-
-    return NULL;
-}
-
-#endif /* !ENABLE_OFI_AUTO_PROGRESS */
 
 
 #define OFI_MAJOR_VERSION 1
@@ -1174,9 +1161,7 @@ int query_for_fabric(struct fabric_info *info)
                                    for put with signal implementation */
 #endif
     hints.addr_format         = FI_FORMAT_UNSPEC;
-#if defined(ENABLE_OFI_AUTO_PROGRESS)
     domain_attr.data_progress = FI_PROGRESS_AUTO;
-#endif
     domain_attr.resource_mgmt = FI_RM_ENABLED;
 #ifdef ENABLE_MR_SCALABLE
     domain_attr.mr_mode       = FI_MR_SCALABLE; /* VA space-doesn't have to be pre-allocated */
@@ -1602,10 +1587,6 @@ int shmem_transport_startup(void)
     ret = populate_av();
     if (ret != 0) return ret;
 
-#if !defined(ENABLE_OFI_AUTO_PROGRESS)
-    pthread_create(&shmem_transport_ofi_progress_thread, NULL,
-                   &shmem_transport_ofi_progress_thread_func, NULL);
-#endif
     return 0;
 }
 
@@ -1785,12 +1766,6 @@ int shmem_transport_fini(void)
     int ret;
     shmem_transport_ofi_stx_kvs_t* e;
     int stx_len = 0;
-
-#if !defined(ENABLE_OFI_AUTO_PROGRESS)
-    void *progress_out;
-    shmem_transport_ofi_progress_thread_enabled = 0;
-    pthread_join(shmem_transport_ofi_progress_thread, &progress_out);
-#endif
 
     /* Free all shareable contexts.  This performs a quiet on each context,
      * ensuring all operations have completed before proceeding with shutdown. */

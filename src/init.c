@@ -182,11 +182,6 @@ shmem_internal_init(int tl_requested, int *tl_provided)
     shmem_internal_thread_level = SHMEM_THREAD_SINGLE;
 #endif
 
-    /* FIXME: Need ENABLE_THREADS with progress thread */
-#if !defined(ENABLE_OFI_AUTO_PROGRESS)
-    shmem_internal_thread_level = SHMEM_THREAD_MULTIPLE;
-#endif
-
     *tl_provided = shmem_internal_thread_level;
 
 #if USE_ON_NODE_COMMS
